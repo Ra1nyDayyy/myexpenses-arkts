@@ -545,36 +545,36 @@ struct Index {
   moreMenu() {
     List({ space: 0 }) {
       ListItem() {
-        this.menuRow('AI 助手', '🤖', () => {
+        this.menuRow('AI 助手', $r('app.media.ic_ai_robot'), () => {
           this.navigateToAi();
         })
       }
       ListItem() {
-        this.menuRow('类别', '🏷️', () => {
+        this.menuRow('类别', $r('app.media.ic_category'), () => {
           router.pushUrl({ url: 'pages/CategoryManage' }).catch(() => {
           });
         })
       }
       ListItem() {
-        this.menuRow('付款方法', '💳', () => {
+        this.menuRow('付款方法', $r('app.media.ic_method'), () => {
           router.pushUrl({ url: 'pages/MethodManage' }).catch(() => {
           });
         })
       }
       ListItem() {
-        this.menuRow('标签', '🔖', () => {
+        this.menuRow('标签', $r('app.media.ic_tag'), () => {
           router.pushUrl({ url: 'pages/TagManage' }).catch(() => {
           });
         })
       }
       ListItem() {
-        this.menuRow('资产负债表', '📊', () => {
+        this.menuRow('资产负债表', $r('app.media.ic_balance'), () => {
           router.pushUrl({ url: 'pages/BalanceSheet' }).catch(() => {
           });
         })
       }
       ListItem() {
-        this.menuRow('设置', '⚙️', () => {
+        this.menuRow('设置', $r('app.media.ic_settings'), () => {
           router.pushUrl({ url: 'pages/Settings' }).catch(() => {
           });
         })
@@ -585,11 +585,13 @@ struct Index {
   }
 
   @Builder
-  menuRow(label: string, icon: string, onClick: () => void) {
+  menuRow(label: string, icon: Resource, onClick: () => void) {
     Row() {
-      Text(icon)
-        .fontSize(18)
+      Image(icon)
+        .width(22)
+        .height(22)
         .margin({ right: 12 })
+        .fillColor($r('app.color.textSecondary'))
       Text(label)
         .fontSize(15)
         .fontColor($r('app.color.textPrimary'))

@@ -138,3 +138,12 @@
   3. **模板 Tab**：结构对齐（标题 + 空态 + FAB）
 - 新增资源：summaryCardBackground（base #FEF7FF / dark #211A26）
 - 复测：BUILD SUCCESSFUL，模拟器验证交易页"账户名+余额+汇总卡片+分组列表+FAB+4Tab"结构与安卓高度对齐
+
+## FIX-017: 差异文档待优化项修复（第十轮）
+
+- 按 ui-difference-analysis.md 待优化项逐项处理：
+  1. **UI-001（P2）**：更多页菜单 Emoji 图标 → 6 个 SVG 图标资源（ic_ai_robot/ic_category/ic_method/ic_tag/ic_balance/ic_settings），Image 组件加载 + fillColor 着色
+  2. **UI-002（P3）**：记账编辑页新增 CalculatorDialog 组件（数字键 + 四则运算 + 正负/百分号 + 确定按钮），金额行右侧加计算器入口
+  3. **UI-003（P3）**：拖拽排序待实现（递归树结构与 List.onItemMove 冲突，需重构）
+  4. **UI-004（P3）**：保存按钮样式差异标记可接受
+- 复测：BUILD SUCCESSFUL，模拟器验证更多页 SVG 图标、记账编辑页计算器弹出均正常

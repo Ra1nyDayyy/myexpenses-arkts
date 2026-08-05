@@ -4,6 +4,7 @@ import { Category } from '../model/Category';
 import { PaymentMethod, Payee, Tag } from '../model/SupportEntities';
 import { Repository } from '../database/Repository';
 import { PageHeader } from '../components/PageHeader';
+import { CalculatorDialog } from '../components/CalculatorDialog';
 import { parseMoney, formatMoney } from '../model/Money';
 import { currencyByCode } from '../model/CurrencyUnit';
 import { generateUuid, formatDateTime } from '../common/FormatUtils';
@@ -38,6 +39,33 @@ struct ExpenseEdit {
   @State payees: Payee[] = [];
   @State tags: Tag[] = [];
   private currencyCode: string = 'CNY';
+  private calculator: CustomDialogController = new CustomDialogController({
+    builder: CalculatorDialog({
+      onResult: (value: string) => {
+        this.amountInput = value;
+      }
+    }),
+    autoCancel: true,
+    alignment: DialogAlignment.Bottom,
+    customStyle: true,
+    cornerRadius: 16
+  });
+
+  private showCalculator(): void {
+    this.calculator = new CustomDialogController({
+      builder: CalculatorDialog({
+        display: this.amountInput || '0',
+        onResult: (value: string) => {
+          this.amountInput = value;
+        }
+      }),
+      autoCancel: true,
+      alignment: DialogAlignment.Bottom,
+      customStyle: true,
+      cornerRadius: 16
+    });
+    this.calculator.open();
+  }
 
   aboutToAppear(): void {
     const params = router.getParams() as Record<string, Object>;
@@ -363,6 +391,14 @@ struct ExpenseEdit {
               .textAlign(TextAlign.End)
               .onChange((v: string) => {
                 this.amountInput = v;
+              })
+            // 计算器按钮（对齐安卓金额计算器）
+            Text('⌨')
+              .fontSize(18)
+              .margin({ left: 8 })
+              .padding({ left: 4, right: 4 })
+              .onClick(() => {
+                this.showCalculator();
               })
           }
           .width('100%')
