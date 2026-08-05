@@ -1,0 +1,148 @@
+{
+  "color": [
+    {
+      "name": "start_window_background",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "primaryColor",
+      "value": "#0050A7"
+    },
+    {
+      "name": "primaryLightColor",
+      "value": "#6085DC"
+    },
+    {
+      "name": "primaryDarkColor",
+      "value": "#002977"
+    },
+    {
+      "name": "appDefault",
+      "value": "#FFC107"
+    },
+    {
+      "name": "emphasis",
+      "value": "#31B6E7"
+    },
+    {
+      "name": "colorExpense",
+      "value": "#800000"
+    },
+    {
+      "name": "colorIncome",
+      "value": "#006800"
+    },
+    {
+      "name": "colorExpenseOnCard",
+      "value": "#C62828"
+    },
+    {
+      "name": "colorIncomeOnCard",
+      "value": "#2D7B31"
+    },
+    {
+      "name": "colorTransfer",
+      "value": "#000080"
+    },
+    {
+      "name": "colorAggregate",
+      "value": "#616161"
+    },
+    {
+      "name": "drawerBackground",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "cardBackground",
+      "value": "#F0F0F0"
+    },
+    {
+      "name": "materialGrey",
+      "value": "#9E9E9E"
+    },
+    {
+      "name": "materialGrey300",
+      "value": "#D6D6D6"
+    },
+    {
+      "name": "materialGrey400",
+      "value": "#BDBDBD"
+    },
+    {
+      "name": "futureBackground",
+      "value": "#11000000"
+    },
+    {
+      "name": "activatedBackground",
+      "value": "#9E9E9E"
+    },
+    {
+      "name": "UNRECONCILED",
+      "value": "#888888"
+    },
+    {
+      "name": "CLEARED",
+      "value": "#0000FF"
+    },
+    {
+      "name": "VOID",
+      "value": "#FF0000"
+    },
+    {
+      "name": "RECONCILED",
+      "value": "#00FF00"
+    },
+    {
+      "name": "overspent",
+      "value": "#C00100"
+    },
+    {
+      "name": "inBudget",
+      "value": "#026E00"
+    },
+    {
+      "name": "surfaceBackground",
+      "value": "#FAF8FE"
+    },
+    {
+      "name": "pageBackground",
+      "value": "#FAF8FE"
+    },
+    {
+      "name": "cardBackgroundColor",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "textPrimary",
+      "value": "#000000"
+    },
+    {
+      "name": "textSecondary",
+      "value": "#666666"
+    },
+    {
+      "name": "dividerColor",
+      "value": "#EEEEEE"
+    },
+    {
+      "name": "tabBarBackground",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "rowSelectedBackground",
+      "value": "#1A000000"
+    },
+    {
+      "name": "primaryContainer",
+      "value": "#E6F0FF"
+    },
+    {
+      "name": "textTertiary",
+      "value": "#808080"
+    },
+    {
+      "name": "summaryCardBackground",
+      "value": "#FEF7FF"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+id,page,state,device,orientation,theme,locale,android_image,arkui_image,overlay_image,diff_image,result,issue_id
+G-MAIN-01,Main,empty,TargetPhone,PORTRAIT,LIGHT,zh-CN,migration/evidence/gui/MAIN_EMPTY_android.png,migration/evidence/gui/MAIN_EMPTY_arkui.png,migration/evidence/gui/MAIN_EMPTY_overlay.png,migration/evidence/gui/MAIN_EMPTY_diff.png,PASS,G-001
+G-TX-01,Main,account_list,TargetPhone,PORTRAIT,LIGHT,zh-CN,migration/evidence/gui/TX_EMPTY_V2_android.png,migration/evidence/gui/TX_EMPTY_V2_arkui.png,migration/evidence/gui/TX_EMPTY_V2_overlay.png,migration/evidence/gui/TX_EMPTY_V2_diff.png,PASS,G-006
+G-EX-01,ExpenseEdit,default,TargetPhone,PORTRAIT,LIGHT,zh-CN,migration/evidence/gui/EXPENSE_EDIT_android.png,migration/evidence/gui/EXPENSE_EDIT_arkui.png,migration/evidence/gui/EXPENSE_EDIT_overlay.png,migration/evidence/gui/EXPENSE_EDIT_diff.png,PASS,G-009

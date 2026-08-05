@@ -1,0 +1,52 @@
+{
+  "os": {
+    "system": "Darwin",
+    "release": "24.6.0",
+    "machine": "arm64"
+  },
+  "python": {
+    "path": "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+    "version": "3.9.6"
+  },
+  "deveco_studio": {
+    "found": true,
+    "root": "/Applications/DevEco-Studio.app"
+  },
+  "sdk": {
+    "found": true,
+    "root": "/Applications/DevEco-Studio.app/Contents/sdk",
+    "api_versions": [
+      "ets"
+    ]
+  },
+  "java": {
+    "found": true,
+    "path": "/Applications/DevEco-Studio.app/Contents/jbr/Contents/Home/bin/java",
+    "version": "openjdk version \"21.0.8\" 2025-07-15"
+  },
+  "hvigor": {
+    "found": true,
+    "path": "/Applications/DevEco-Studio.app/Contents/tools/hvigor/bin/hvigorw"
+  },
+  "hap_sign_tool": {
+    "found": true,
+    "path": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/lib/hap-sign-tool.jar"
+  },
+  "devices": {
+    "hdc_found": false,
+    "adb_found": true,
+    "devices": {
+      "hdc": [],
+      "adb": [
+        "<none>"
+      ]
+    },
+    "any_connected": false
+  },
+  "git": {
+    "found": true,
+    "path": "/usr/bin/git"
+  },
+  "template_target_sdk": "6.1.1(24)",
+  "generated_at": "2026-08-05T18:19:56.331124"
+}

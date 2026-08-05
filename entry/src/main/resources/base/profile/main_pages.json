@@ -1,0 +1,14 @@
+{
+  "src": [
+    "pages/Index",
+    "pages/AccountEdit",
+    "pages/ExpenseEdit",
+    "pages/CategoryManage",
+    "pages/CategorySelect",
+    "pages/MethodManage",
+    "pages/TagManage",
+    "pages/AiAssistant",
+    "pages/BalanceSheet",
+    "pages/Settings"
+  ]
+}

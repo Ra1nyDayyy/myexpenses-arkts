@@ -1,0 +1,14 @@
+{
+  "total": 8,
+  "passed": 8,
+  "failed": 0,
+  "blocked": 0,
+  "notExecuted": 0,
+  "evidence": [
+    "migration/function-tests.md",
+    "migration/evidence/gui/compare/TX_TAB_diff.png",
+    "migration/evidence/gui/compare/ACCOUNTS_TAB_diff.png",
+    "migration/evidence/gui/compare/EXPENSE_EDIT2_diff.png",
+    "migration/evidence/gui/db_created.txt"
+  ]
+}

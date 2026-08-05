@@ -1,0 +1,26 @@
+{
+  "criteria": {
+    "function_parity": { "status": "PENDING", "evidence": ["migration/function-tests.md"] },
+    "data_and_persistence": { "status": "PASS", "evidence": ["migration/evidence/gui/db_created.txt"] },
+    "ui_parity": { "status": "PENDING", "evidence": ["migration/gui-diff.md"] },
+    "portrait": { "status": "PASS", "evidence": ["migration/evidence/gui/MAIN_EMPTY_diff.png", "migration/evidence/gui/TX_EMPTY_V2_diff.png"] },
+    "landscape": { "status": "WAIVED", "evidence": [] },
+    "light_theme": { "status": "PASS", "evidence": ["migration/evidence/gui/MAIN_EMPTY_diff.png", "migration/evidence/gui/TX_EMPTY_V2_diff.png"] },
+    "dark_theme": { "status": "PENDING", "evidence": [] },
+    "locales": { "status": "PENDING", "evidence": [] },
+    "lifecycle": { "status": "PASS", "evidence": ["migration/evidence/gui/main_screen.jpeg"] },
+    "unit_tests": { "status": "PENDING", "evidence": [] },
+    "device_tests": { "status": "PENDING", "evidence": [] }
+  },
+  "release": {
+    "status": "PENDING",
+    "signed": false,
+    "hap": "entry/build/default/outputs/default/entry-default-unsigned.hap",
+    "sha256": "",
+    "evidence": []
+  },
+  "review": {
+    "status": "PENDING",
+    "evidence": []
+  }
+}

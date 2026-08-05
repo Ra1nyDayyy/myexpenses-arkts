@@ -1,0 +1,564 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "开支助手入口模块"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "开支助手主能力"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "开支助手"
+    },
+    {
+      "name": "app_name",
+      "value": "开支助手"
+    },
+    {
+      "name": "account",
+      "value": "账户"
+    },
+    {
+      "name": "accounts",
+      "value": "账户"
+    },
+    {
+      "name": "income",
+      "value": "收入"
+    },
+    {
+      "name": "expense",
+      "value": "支出"
+    },
+    {
+      "name": "transfer",
+      "value": "转帐"
+    },
+    {
+      "name": "split_transaction",
+      "value": "款项拆分交易"
+    },
+    {
+      "name": "category",
+      "value": "类别"
+    },
+    {
+      "name": "notes",
+      "value": "备注"
+    },
+    {
+      "name": "date",
+      "value": "日期"
+    },
+    {
+      "name": "payee",
+      "value": "收款人"
+    },
+    {
+      "name": "payer_or_payee",
+      "value": "交易对手"
+    },
+    {
+      "name": "method",
+      "value": "付款方法"
+    },
+    {
+      "name": "tags",
+      "value": "标签"
+    },
+    {
+      "name": "attachments",
+      "value": "附件"
+    },
+    {
+      "name": "status",
+      "value": "状态"
+    },
+    {
+      "name": "select",
+      "value": "选择"
+    },
+    {
+      "name": "current_balance",
+      "value": "当前余额"
+    },
+    {
+      "name": "opening_balance",
+      "value": "起始余额"
+    },
+    {
+      "name": "sum_income",
+      "value": "收入"
+    },
+    {
+      "name": "sum_expenses",
+      "value": "支出"
+    },
+    {
+      "name": "sum_transfer",
+      "value": "转帐"
+    },
+    {
+      "name": "total_cleared",
+      "value": "已入帐/已结算总计"
+    },
+    {
+      "name": "total_reconciled",
+      "value": "已对帐总计"
+    },
+    {
+      "name": "saving_goal",
+      "value": "储蓄目标"
+    },
+    {
+      "name": "credit_limit",
+      "value": "信用额度"
+    },
+    {
+      "name": "grand_total",
+      "value": "累计"
+    },
+    {
+      "name": "menu_aggregates",
+      "value": "总计"
+    },
+    {
+      "name": "menu_create_account",
+      "value": "新建账户"
+    },
+    {
+      "name": "menu_create_transaction",
+      "value": "新建交易"
+    },
+    {
+      "name": "menu_create_transfer",
+      "value": "新建转帐"
+    },
+    {
+      "name": "menu_create_split",
+      "value": "新建拆分款项"
+    },
+    {
+      "name": "menu_save_and_new",
+      "value": "保存并新建"
+    },
+    {
+      "name": "save_transaction_and_new_success",
+      "value": "保存成功"
+    },
+    {
+      "name": "new_balance",
+      "value": "更新账户余额"
+    },
+    {
+      "name": "no_accounts",
+      "value": "没有账户。"
+    },
+    {
+      "name": "no_expenses",
+      "value": "未有开支!"
+    },
+    {
+      "name": "no_matches_found",
+      "value": "无匹配结果"
+    },
+    {
+      "name": "menu_delete",
+      "value": "删除"
+    },
+    {
+      "name": "menu_edit",
+      "value": "编辑"
+    },
+    {
+      "name": "menu_undelete_transaction",
+      "value": "取消删除"
+    },
+    {
+      "name": "menu_close",
+      "value": "关闭"
+    },
+    {
+      "name": "menu_help",
+      "value": "帮助"
+    },
+    {
+      "name": "menu_exclude_from_totals",
+      "value": "不计入总数"
+    },
+    {
+      "name": "menu_flag",
+      "value": "标记"
+    },
+    {
+      "name": "menu_invert_transfer",
+      "value": "倒置"
+    },
+    {
+      "name": "menu_original_amount",
+      "value": "原始金额"
+    },
+    {
+      "name": "menu_equivalent_amount",
+      "value": "等价金额"
+    },
+    {
+      "name": "menu_show_equivalent_value",
+      "value": "显示等值"
+    },
+    {
+      "name": "balance_sheet",
+      "value": "资产负债表"
+    },
+    {
+      "name": "balance_sheet_net_worth",
+      "value": "净资产"
+    },
+    {
+      "name": "balance_sheet_section_assets",
+      "value": "资产"
+    },
+    {
+      "name": "balance_sheet_section_liabilities",
+      "value": "负债"
+    },
+    {
+      "name": "navigation_drawer_accounts_title",
+      "value": "管理账户"
+    },
+    {
+      "name": "account_closed",
+      "value": "账户已关闭"
+    },
+    {
+      "name": "content_description_closed",
+      "value": "已关闭的"
+    },
+    {
+      "name": "mark_as_cleared",
+      "value": "标记为已入账"
+    },
+    {
+      "name": "mark_as_unreconciled",
+      "value": "标记为未对账"
+    },
+    {
+      "name": "details",
+      "value": "详情"
+    },
+    {
+      "name": "copy_text",
+      "value": "复制文本"
+    },
+    {
+      "name": "dialog_confirm_discard_changes",
+      "value": "放弃更改？"
+    },
+    {
+      "name": "title",
+      "value": "名称"
+    },
+    {
+      "name": "account_type_bank",
+      "value": "银行账户"
+    },
+    {
+      "name": "account_type_cash",
+      "value": "现金账户"
+    },
+    {
+      "name": "account_type_ccard",
+      "value": "信用卡"
+    },
+    {
+      "name": "account_type_asset",
+      "value": "其他资产"
+    },
+    {
+      "name": "account_type_liability",
+      "value": "其他负债账户"
+    },
+    {
+      "name": "amount",
+      "value": "金额"
+    },
+    {
+      "name": "currency",
+      "value": "货币"
+    },
+    {
+      "name": "color",
+      "value": "颜色"
+    },
+    {
+      "name": "description",
+      "value": "描述"
+    },
+    {
+      "name": "label",
+      "value": "文本标签"
+    },
+    {
+      "name": "transfer_to_account",
+      "value": "至"
+    },
+    {
+      "name": "select_category",
+      "value": "选择类别"
+    },
+    {
+      "name": "no_split_parts",
+      "value": "没有拆分款项。"
+    },
+    {
+      "name": "unsplit_amount",
+      "value": "金额合并"
+    },
+    {
+      "name": "menu_save",
+      "value": "保存"
+    },
+    {
+      "name": "menu_cancel",
+      "value": "取消"
+    },
+    {
+      "name": "menu_add",
+      "value": "添加"
+    },
+    {
+      "name": "menu_edit_account",
+      "value": "编辑账户"
+    },
+    {
+      "name": "menu_manage_categories",
+      "value": "类别"
+    },
+    {
+      "name": "menu_manage_methods",
+      "value": "付款方法"
+    },
+    {
+      "name": "menu_manage_tags",
+      "value": "标签"
+    },
+    {
+      "name": "menu_manage_templates",
+      "value": "模板"
+    },
+    {
+      "name": "menu_manage_budgets",
+      "value": "预算"
+    },
+    {
+      "name": "menu_manage_parties",
+      "value": "交易对手"
+    },
+    {
+      "name": "menu_settings",
+      "value": "设置"
+    },
+    {
+      "name": "goal_or_limit",
+      "value": "储蓄目标/信用额度"
+    },
+    {
+      "name": "synchronization",
+      "value": "同步"
+    },
+    {
+      "name": "exchange_rate",
+      "value": "汇率"
+    },
+    {
+      "name": "equivalent_amount",
+      "value": "等价金额"
+    },
+    {
+      "name": "menu_clear",
+      "value": "清除"
+    },
+    {
+      "name": "menu_edit_plan",
+      "value": "编辑计划"
+    },
+    {
+      "name": "menu_manage_account_types",
+      "value": "账户类型"
+    },
+    {
+      "name": "menu_manage_account_flags",
+      "value": "账户标记"
+    },
+    {
+      "name": "menu_manage_currencies",
+      "value": "货币"
+    },
+    {
+      "name": "menu_sort",
+      "value": "排序"
+    },
+    {
+      "name": "menu_grouping",
+      "value": "分组"
+    },
+    {
+      "name": "menu_distribution",
+      "value": "开销分布统计表"
+    },
+    {
+      "name": "menu_history",
+      "value": "历史记录"
+    },
+    {
+      "name": "menu_search",
+      "value": "搜索"
+    },
+    {
+      "name": "menu_reset",
+      "value": "导出和重置"
+    },
+    {
+      "name": "menu_balance",
+      "value": "结平账户"
+    },
+    {
+      "name": "menu_print",
+      "value": "打印"
+    },
+    {
+      "name": "menu_show_status",
+      "value": "显示状态手柄"
+    },
+    {
+      "name": "menu_rate",
+      "value": "评分"
+    },
+    {
+      "name": "menu_export",
+      "value": "导出"
+    },
+    {
+      "name": "menu_import",
+      "value": "导入"
+    },
+    {
+      "name": "menu_backup",
+      "value": "备份"
+    },
+    {
+      "name": "menu_restore",
+      "value": "恢复"
+    },
+    {
+      "name": "settings",
+      "value": "设置"
+    },
+    {
+      "name": "grouping_none",
+      "value": "不分组"
+    },
+    {
+      "name": "grouping_day",
+      "value": "日"
+    },
+    {
+      "name": "grouping_week",
+      "value": "星期"
+    },
+    {
+      "name": "grouping_month",
+      "value": "月"
+    },
+    {
+      "name": "grouping_year",
+      "value": "年"
+    },
+    {
+      "name": "grouping_this_week",
+      "value": "这星期"
+    },
+    {
+      "name": "grouping_last_week",
+      "value": "上星期"
+    },
+    {
+      "name": "pref_manage_accounts_title",
+      "value": "账户"
+    },
+    {
+      "name": "pref_manage_categories_title",
+      "value": "类别"
+    },
+    {
+      "name": "pref_manage_methods_title",
+      "value": "付款方法"
+    },
+    {
+      "name": "pref_manage_tags_title",
+      "value": "标签"
+    },
+    {
+      "name": "pref_manage_templates_title",
+      "value": "模板"
+    },
+    {
+      "name": "pref_manage_budgets_title",
+      "value": "预算"
+    },
+    {
+      "name": "pref_manage_parties_title",
+      "value": "交易对手"
+    },
+    {
+      "name": "pref_manage_currencies_title",
+      "value": "货币"
+    },
+    {
+      "name": "pref_manage_account_types_title",
+      "value": "账户类型"
+    },
+    {
+      "name": "pref_manage_account_flags_title",
+      "value": "账户标记"
+    },
+    {
+      "name": "ai_assistant",
+      "value": "AI 助手"
+    },
+    {
+      "name": "ai_assistant_summary",
+      "value": "智能分析您的开支，提供记账建议"
+    },
+    {
+      "name": "ai_assistant_analyze",
+      "value": "开始分析"
+    },
+    {
+      "name": "ai_assistant_welcome",
+      "value": "您好，我是您的记账 AI 助手"
+    },
+    {
+      "name": "ai_assistant_loading",
+      "value": "正在分析您的收支数据..."
+    },
+    {
+      "name": "ai_assistant_empty",
+      "value": "暂无足够数据，先记几笔账吧"
+    },
+    {
+      "name": "ai_assistant_income_summary",
+      "value": "收入概览"
+    },
+    {
+      "name": "ai_assistant_expense_summary",
+      "value": "支出概览"
+    },
+    {
+      "name": "ai_assistant_tips",
+      "value": "AI 建议"
+    }
+  ]
+}

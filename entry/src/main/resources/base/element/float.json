@@ -1,0 +1,76 @@
+{
+  "float": [
+    {
+      "name": "page_text_font_size",
+      "value": "50fp"
+    },
+    {
+      "name": "padding_form",
+      "value": "16vp"
+    },
+    {
+      "name": "padding_main_screen",
+      "value": "16vp"
+    },
+    {
+      "name": "general_padding",
+      "value": "12vp"
+    },
+    {
+      "name": "form_table_ratio",
+      "value": "2.5"
+    },
+    {
+      "name": "textSizeLabel",
+      "value": "12fp"
+    },
+    {
+      "name": "textSizeSmall",
+      "value": "14fp"
+    },
+    {
+      "name": "account_color_diameter",
+      "value": "42vp"
+    },
+    {
+      "name": "accessibility_clickable_minimum",
+      "value": "48vp"
+    },
+    {
+      "name": "drawer_padding",
+      "value": "16vp"
+    },
+    {
+      "name": "fab_margin_right",
+      "value": "16vp"
+    },
+    {
+      "name": "fab_margin_bottom",
+      "value": "16vp"
+    },
+    {
+      "name": "fab_related_bottom_padding",
+      "value": "75vp"
+    },
+    {
+      "name": "progress_donut_stroke_width",
+      "value": "3vp"
+    },
+    {
+      "name": "thumbnail_size",
+      "value": "48vp"
+    },
+    {
+      "name": "margin_list",
+      "value": "44vp"
+    },
+    {
+      "name": "vertical_padding_paragraph",
+      "value": "8vp"
+    },
+    {
+      "name": "card_radius",
+      "value": "8vp"
+    }
+  ]
+}

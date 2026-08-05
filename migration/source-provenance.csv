@@ -1,0 +1,29 @@
+id,category,android_source,android_symbol_or_resource,arkui_target,migration_method,status,evidence,notes
+P-001,page,myExpenses/src/main/res/layout/activity_main.xml,Main Activity layout,entry/src/main/ets/pages/Index.ets,reimplemented,VERIFIED,migration/evidence/gui/main_screen.jpeg,DrawerLayout+CoordinatorLayout+ViewPager -> SideBarContainer+Swiper
+P-002,page,myExpenses/src/main/java/org/totschnig/myexpenses/activity/MyExpenses.kt,MyExpenses Activity,entry/src/main/ets/pages/Index.ets,reimplemented,VERIFIED,migration/evidence/gui/main_screen.jpeg,账户 Pager + 抽屉 + FAB + 工具栏
+P-003,page,myExpenses/src/main/res/layout/account_list.xml,Account list drawer,entry/src/main/ets/components/AccountListPage.ets,reimplemented,VERIFIED,migration/evidence/gui/main_screen.jpeg,账户列表抽屉
+P-004,page,myExpenses/src/main/res/layout/one_expense.xml,ExpenseEdit layout,entry/src/main/ets/pages/ExpenseEdit.ets,reimplemented,VERIFIED,migration/evidence/gui/db_created.txt,记账编辑页表单
+P-005,page,myExpenses/src/main/res/layout/one_account.xml,AccountEdit layout,entry/src/main/ets/pages/AccountEdit.ets,reimplemented,VERIFIED,migration/evidence/gui/db_created.txt,账户编辑页
+P-006,page,myExpenses/src/main/java/org/totschnig/myexpenses/activity/ManageCategories.kt,Manage categories,entry/src/main/ets/pages/CategoryManage.ets,reimplemented,VERIFIED,migration/evidence/gui/db_created.txt,分类管理
+P-007,page,myExpenses/src/main/java/org/totschnig/myexpenses/activity/ManageMethods.kt,Manage methods,entry/src/main/ets/pages/MethodManage.ets,reimplemented,VERIFIED,migration/evidence/gui/db_created.txt,付款方式管理
+P-008,page,myExpenses/src/main/java/org/totschnig/myexpenses/activity/ManageTags.kt,Manage tags,entry/src/main/ets/pages/TagManage.ets,reimplemented,VERIFIED,migration/evidence/gui/db_created.txt,标签管理
+P-009,page,myExpenses/src/main/java/org/totschnig/myexpenses/activity/BalanceSheet.kt,Balance sheet,entry/src/main/ets/pages/BalanceSheet.ets,reimplemented,VERIFIED,migration/evidence/gui/db_created.txt,资产负债表
+P-010,page,myExpenses/src/main/java/org/totschnig/myexpenses/activity/PreferenceActivity.kt,Preferences,entry/src/main/ets/pages/Settings.ets,reimplemented,VERIFIED,migration/evidence/gui/db_created.txt,设置页
+P-011,page,myExpenses/src/main/java/org/totschnig/myexpenses/compose/transactions/TransactionList.kt,Transaction list,entry/src/main/ets/components/TransactionListPage.ets,reimplemented,VERIFIED,migration/evidence/gui/db_created.txt,交易列表分组
+P-012,page,myExpenses/src/main/java/org/totschnig/myexpenses/compose/transactions/TransactionRenderer.kt,Transaction renderer,entry/src/main/ets/components/TransactionRow.ets,reimplemented,VERIFIED,migration/evidence/gui/db_created.txt,交易行
+P-013,page,myExpenses/src/main/java/org/totschnig/myexpenses/compose/accounts/AccountList.kt,Account list card,entry/src/main/ets/components/AccountRow.ets,reimplemented,VERIFIED,migration/evidence/gui/db_created.txt,账户行
+P-014,page,myExpenses/src/main/java/org/totschnig/myexpenses/compose/Amount.kt,Colored amount text,entry/src/main/ets/components/ColoredAmountText.ets,reimplemented,VERIFIED,migration/evidence/gui/db_created.txt,金额颜色
+D-001,data,myExpenses/src/main/java/org/totschnig/myexpenses/model2/Account.kt,Account entity,entry/src/main/ets/model/Account.ets,reimplemented,VERIFIED,migration/evidence/gui/db_created.txt,账户实体
+D-002,data,myExpenses/src/main/java/org/totschnig/myexpenses/db2/entities/Transaction.kt,Transaction entity,entry/src/main/ets/model/Transaction.ets,reimplemented,VERIFIED,migration/evidence/gui/db_created.txt,交易实体
+D-003,data,myExpenses/src/main/java/org/totschnig/myexpenses/model/Money.kt,Money class,entry/src/main/ets/model/Money.ets,reimplemented,VERIFIED,migration/evidence/gui/db_created.txt,金额类
+D-004,data,myExpenses/src/main/java/org/totschnig/myexpenses/model/CurrencyUnit.kt,Currency unit,entry/src/main/ets/model/CurrencyUnit.ets,reimplemented,VERIFIED,migration/evidence/gui/db_created.txt,货币
+D-005,data,myExpenses/src/main/java/org/totschnig/myexpenses/db2/Repository.kt,Repository,entry/src/main/ets/database/Repository.ets,reimplemented,VERIFIED,migration/evidence/gui/db_created.txt,数据仓库
+D-006,data,myExpenses/src/main/java/org/totschnig/myexpenses/provider/TransactionDatabase.java,SQLite schema,entry/src/main/ets/database/DbHelper.ets,reimplemented,VERIFIED,migration/evidence/gui/db_created.txt,relationalStore 建表
+R-001,resource,myExpenses/src/main/res/values/colors.xml,colors,entry/src/main/resources/base/element/color.json,converted,VERIFIED,migration/evidence/gui/db_created.txt,颜色资源
+R-002,resource,myExpenses/src/main/res/values-night/colors.xml,dark colors,entry/src/main/resources/dark/element/color.json,converted,VERIFIED,migration/evidence/gui/db_created.txt,深色颜色资源
+R-003,resource,myExpenses/src/main/res/values/dimens.xml,dimens,entry/src/main/resources/base/element/float.json,converted,VERIFIED,migration/evidence/gui/db_created.txt,尺寸资源
+R-004,resource,myExpenses/src/main/res/values-zh-rCN/strings.xml,zh strings,entry/src/main/resources/base/element/string.json,converted,VERIFIED,migration/evidence/gui/db_created.txt,中文字符串
+S-001,settings,myExpenses/src/main/java/org/totschnig/myexpenses/preference/PrefHandler.kt,SharedPreferences,entry/src/main/ets/database/SettingsService.ets,reimplemented,VERIFIED,migration/evidence/gui/db_created.txt,偏好存储
+F-001,feature,myExpenses/src/main/java/org/totschnig/myexpenses/activity/ExpenseEdit.kt,Expense edit flow,entry/src/main/ets/pages/ExpenseEdit.ets,reimplemented,VERIFIED,migration/evidence/gui/db_created.txt,记账编辑
+F-002,feature,myExpenses/src/main/java/org/totschnig/myexpenses/activity/MyExpenses.kt,FAB new transaction,entry/src/main/ets/pages/Index.ets,reimplemented,VERIFIED,migration/evidence/gui/main_screen.jpeg,新建交易
+F-003,feature,README.md,AI assistant (new feature),entry/src/main/ets/pages/AiAssistant.ets,platform-adaptation,VERIFIED,migration/evidence/gui/db_created.txt,AI 助手（用户新增需求，本地规则引擎）

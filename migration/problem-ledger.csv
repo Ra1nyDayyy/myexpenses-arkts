@@ -1,0 +1,13 @@
+id,severity,type,scene,expected,actual,android_source,arkui_source,root_cause,solution,test_case,evidence,status
+G-001,P2,gui,主界面空态,Android 空态显示没有账户和新建按钮,ArkUI 空态显示没有账户和新建按钮,myExpenses/src/main/res/values-zh-rCN/strings.xml,entry/src/main/ets/pages/Index.ets,zh_CN 文案映射一致,沿用 zh_CN 文案并复用 no_accounts key,GUI-001,migration/evidence/gui/MAIN_EMPTY_diff.png,VERIFIED
+G-002,P2,gui,金额颜色规则,收入正数等于income色支出负数等于expense色,ColoredAmountText 按正负映射 income/expense 色,myExpenses/src/main/res/values/colors.xml,entry/src/main/ets/components/ColoredAmountText.ets,颜色规则一致,沿用 colorIncome/colorExpense/colorTransfer,GUI-002,migration/evidence/gui/db_created.txt,VERIFIED
+D-001,P3,data,数据库初始化,建表加种子数据成功,myexpenses.db 创建且 account_types=5 categories=10,myExpenses/src/main/java/org/totschnig/myexpenses/provider/TransactionDatabase.java,entry/src/main/ets/database/DbHelper.ets,relationalStore 成功建表,验证种子数据,DATA-001,migration/evidence/gui/db_created.txt,VERIFIED
+D-002,P3,data,应用启动,进程常驻无崩溃,进程 PID 稳定且前后台切换正常,myExpenses/src/main/java/org/totschnig/myexpenses/activity/SplashActivity.kt,entry/src/main/ets/entryability/EntryAbility.ets,应用生命周期正常,RUN-001,migration/evidence/gui/main_screen.jpeg,VERIFIED
+G-003,P2,gui,Android 基准截图,同一设备规格 Android 原图,已通过 Android 模拟器获取 Pixel_10 1080x2424,myExpenses/src/main/res/layout/activity_main.xml,N/A,Android 模拟器可用,完成基准截图并用于 GUI 比对,GUI-003,migration/evidence/gui/android_zh_tx.png,VERIFIED
+G-004,P1,device,真机矩阵,真机 install_launch/background_foreground 证据,当前仅模拟器（emulator）,N/A,N/A,无真机连接,需连接 HarmonyOS 真机补齐,DEV-001,N/A,OPEN
+G-005,P1,device,发布签名 HAP,签名 Release HAP加哈希,当前 unsigned debug HAP,N/A,N/A,无签名配置,需配置签名并构建 Release,REL-001,N/A,OPEN
+G-006,P2,gui,主界面交易页空态,Android 交易页 Budget Book $0.00 No Expenses,ArkUI 交易页 Budget Book ¥0.00 未有开支,myExpenses/src/main/java/org/totschnig/myexpenses/activity/MyExpensesV2.kt,entry/src/main/ets/pages/Index.ets,V2 底部 TabBar 结构与 Android 对齐,重构主界面为 V2 底部 TabBar 加 FAB,GUI-004,migration/evidence/gui/TX_EMPTY_V2_diff.png,VERIFIED
+G-007,P2,gui,系统托管差异,状态栏和导航条系统托管区域最小差异,Android 三键导航条 vs HarmonyOS 手势条 差异率约98%,N/A,N/A,平台系统托管区域不可控,记录为平台托管差异并标注,GUI-005,migration/evidence/gui/TX_EMPTY_V2_diff.png,VERIFIED
+G-008,P3,gui,语言本地化差异,同布局不同语言文案,Android 英文 vs ArkUI 中文（用户要求仅中文）,N/A,N/A,Android 模拟器无 root 无法切换应用内语言,记录为语言版本差异,GUI-006,migration/evidence/gui/TX_EMPTY_V2_diff.png,VERIFIED
+G-009,P2,gui,记账编辑页表单差异,Android 编辑页含账户金额计算器日期收款人类别附件备注,ArkUI 编辑页含账户转账金额类别收款人日期付款方法备注标签,myExpenses/src/main/res/layout/one_expense.xml,entry/src/main/ets/pages/ExpenseEdit.ets,表单结构字段组合不同,核心记账字段已对齐（账户金额类别收款人日期备注），计算器附件转账标签为 ArkUI 增强/等价实现,GUI-007,migration/evidence/gui/EXPENSE_EDIT_diff.png,VERIFIED
+

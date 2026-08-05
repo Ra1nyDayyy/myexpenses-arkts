@@ -1,0 +1,46 @@
+{
+  "androidRoot": "/Users/rainyday/Desktop/migration/MyExpenses",
+  "blankTemplateRoot": "/Users/rainyday/Desktop/migration/.codeartsdoer/skills/android-to-arkui-full-migration/assets/arkui-stage-template",
+  "targetRoot": "/Users/rainyday/Desktop/migration/arkts",
+  "forbiddenRoots": [],
+  "guiRequirements": [
+    {
+      "page": "Main",
+      "states": ["empty", "account_list"],
+      "devices": ["TargetPhone"],
+      "orientations": ["PORTRAIT"],
+      "themes": ["LIGHT", "DARK"],
+      "locales": ["zh-CN"],
+      "landscapeWaived": true
+    },
+    {
+      "page": "AccountEdit",
+      "states": ["default"],
+      "devices": ["TargetPhone"],
+      "orientations": ["PORTRAIT"],
+      "themes": ["LIGHT", "DARK"],
+      "locales": ["zh-CN"],
+      "landscapeWaived": true
+    },
+    {
+      "page": "ExpenseEdit",
+      "states": ["default"],
+      "devices": ["TargetPhone"],
+      "orientations": ["PORTRAIT"],
+      "themes": ["LIGHT", "DARK"],
+      "locales": ["zh-CN"],
+      "landscapeWaived": true
+    },
+    {
+      "page": "AiAssistant",
+      "states": ["default"],
+      "devices": ["TargetPhone"],
+      "orientations": ["PORTRAIT"],
+      "themes": ["LIGHT", "DARK"],
+      "locales": ["zh-CN"],
+      "landscapeWaived": true
+    }
+  ],
+  "requiredDeviceScenarios": ["install_launch", "background_foreground"],
+  "currentStage": "ACCEPTANCE_CANDIDATE"
+}
