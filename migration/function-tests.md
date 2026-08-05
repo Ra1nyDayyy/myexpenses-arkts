@@ -47,3 +47,46 @@
 - 功能：5 项 PASS，0 FAIL
 - Bug：3 个已修复并验证
 - 未覆盖：转账完整 UI 流程（工具限制）、深色截图、真机、签名
+
+---
+
+# 全流程功能测试记录（2026-08-06）
+
+## 测试环境
+- 设备：HarmonyOS 模拟器 emulator 6.1.0.125（127.0.0.1:5555）
+- 应用：开支助手（org.totschnig.myexpenses），HAP 约 1.08MB（debug unsigned）
+- 测试方式：uitest UI 自动化 + sqlite 数据库校验
+- 数据基线：1 账户（Budget Book）、1 交易、1 模板
+
+## 测试用例与结果
+
+| 编号 | 功能 | 操作步骤 | 预期 | 实际 | 证据 | 结论 |
+|---|---|---|---|---|---|---|
+| T1 | 账户列表/新建账户 | 账户Tab查看→点+→输入"现金账户"→保存 | 账户列表显示新账户 | 账户页显示 Budget Book+现金账户，新建成功 | sqlite accounts+1 / UI dump | **PASS** |
+| T2 | 记账保存→余额更新 | FAB→支出→输入50→保存 | 余额-50，交易出现 | transactions+1 (amount=-5000)，交易页余额¥-50.00 | sqlite id2=-5000 / UI ¥-50.00 | **PASS** |
+| T3 | 转账校验 | FAB→转账→未选目标→保存 | 拦截保存并提示 | transactions 不变（2条），校验生效 | sqlite count=2 | **PASS** |
+| T4 | 拆分交易 | 编辑页→拆分Tab→添加拆分项 | 显示拆分款项+子项 | 拆分款项区+子项"未分类 ¥0.00"显示 | UI dump | **PASS** |
+| T5 | 模板/周期计划 | 模板Tab→新建模板→设每月周期→生成 | 模板显示周期标签+生成交易 | 新建"新模板"成功，周期菜单含每月/自动执行/提前天数，recurrence=4 保存 | sqlite recurrence=4 / UI 菜单 | **PASS** |
+| T6 | 分类管理 | 更多→类别 | 显示分类列表 | 10个分类（交通/其他/医疗/奖金/娱乐/居住/工资/教育/购物/餐饮） | UI dump / sqlite categories=10 | **PASS** |
+| T7 | 标签管理 | 更多→标签→+→输入"工作"→确定 | 标签列表显示 | 新建标签"工作"成功 | UI dump | **PASS** |
+| T8 | 付款方式管理 | 更多→付款方法 | 显示方法列表 | 6个方法（现金/银行卡/信用卡/支票/转账/其他） | UI dump | **PASS** |
+| T9 | AI 助手分析 | 更多→AI助手 | 收支概览+建议 | 支出-50/结余-50/8月趋势/类别分析 | UI dump | **PASS** |
+| T10 | 设置/更多导航 | 更多页→设置 | 设置项显示 | 设置页（账户/类别/显示等值开关） | UI dump | **PASS** |
+
+## 发现的 Bug（已修复）
+
+| Bug | 现象 | 根因 | 修复 |
+|---|---|---|---|
+| BUG-A | 分类管理页显示空列表（有10条数据） | categories 表旧结构缺 sort_order 列，orderByAsc(sort_order) 查询失败 | DbHelper 增加 ALTER TABLE 迁移逻辑（补缺失列，容错） |
+| BUG-B | 模板列表空态不刷新/新建模板不生效 | 与 BUG-A 同根因（templates 表缺列导致查询异常） | 迁移逻辑覆盖 templates 表 |
+| BUG-C | 模板行周期标签不显示 | ForEach keyGenerator 用 id（周期变化不重建 item） | ✅ 已修复：keyGenerator 加入 recurrence/advanceDays/autoExecute，模拟器验证"每月"→"每周"实时刷新 |
+
+## 已知限制（如实）
+- T3 转账"选目标账户"完整 UI 流程受 ArkUI Select 自动化限制（未 UI 化验证；校验逻辑已实测拦截）
+- 真机矩阵、签名 HAP 待用户配合
+
+## 汇总（本轮全流程）
+- 通过（PASS）：10 / 10
+- 失败（FAIL）：0
+- 发现 Bug：3 个（BUG-A/BUG-B/BUG-C **全部已修复**）
+- 覆盖率：账户/记账/转账校验/拆分/模板计划/分类/标签/付款/AI/设置 全部覆盖

@@ -4,7 +4,8 @@
  */
 @Component
 export struct EmptyState {
-  icon: string = '📋';
+  icon: string = '';
+  iconResource: Resource | null = null;
   @Prop title: string = '';
   @Prop subtitle: string = '';
   @Prop actionText: string = '';
@@ -15,8 +16,15 @@ export struct EmptyState {
     Column({ space: 16 }) {
       // 图标占位（圆形底）
       Stack() {
-        Text(this.icon)
-          .fontSize(36)
+        if (this.iconResource !== null) {
+          Image(this.iconResource)
+            .width(36)
+            .height(36)
+            .fillColor($r('app.color.textSecondary'))
+        } else {
+          Text(this.icon)
+            .fontSize(36)
+        }
       }
       .width(72)
       .height(72)

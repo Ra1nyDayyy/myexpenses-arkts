@@ -62,6 +62,7 @@ export struct CategoryInputDialog {
 struct CategoryManage {
   @State categories: Category[] = [];
   @State expandedIds: number[] = [];
+  @State dragEditMode: boolean = false;
 
   private repository: Repository = Repository.getInstance();
   private editTarget: Category | null = null;
@@ -140,7 +141,7 @@ struct CategoryManage {
 
   private async deleteCategory(cat: Category): Promise<void> {
     await this.repository.deleteCategory(cat.id);
-    promptAction.showToast({ message: '已删除' });
+    promptAction.showToast({ message: $r('app.string.toast_deleted') });
     await this.load();
   }
 
@@ -157,20 +158,46 @@ struct CategoryManage {
         }
       })
 
-      Scroll() {
-        Column() {
-          ForEach(this.categories, (cat: Category) => {
+      List({ space: 0 }) {
+        ForEach(this.categories, (cat: Category) => {
+          ListItem() {
             this.categoryRow(cat, 0)
-          }, (cat: Category) => `root_${cat.id}`)
-        }
-        .width('100%')
+          }
+        }, (cat: Category) => `root_${cat.id}`)
       }
       .layoutWeight(1)
       .width('100%')
+      .editMode(this.dragEditMode)
+      .onItemMove((from: number, to: number) => {
+        this.reorderCategories(from, to);
+        return true;
+      })
     }
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.pageBackground'))
+  }
+
+  /**
+   * 长按进入分类拖拽排序（对齐安卓拖拽排序）
+   */
+  private enableDrag(): void {
+    this.dragEditMode = true;
+  }
+
+  /**
+   * 分类拖拽重排（内存重排根分类 + 持久化排序号）
+   */
+  private reorderCategories(from: number, to: number): void {
+    if (from < 0 || to < 0 || from >= this.categories.length || to >= this.categories.length || from === to) {
+      return;
+    }
+    const item = this.categories.splice(from, 1)[0];
+    this.categories.splice(to, 0, item);
+    this.categories = [...this.categories];
+    // 持久化根分类顺序
+    const rootIds = this.categories.map((c: Category) => c.id);
+    this.repository.updateCategoryOrders(rootIds);
   }
 
   @Builder

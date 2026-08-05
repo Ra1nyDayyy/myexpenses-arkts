@@ -1,5 +1,6 @@
 import { Account, AccountType, AccountGrouping } from '../model/Account';
 import { Repository } from '../database/Repository';
+import { Tag } from '../model/SupportEntities';
 import { CurrencyUnit, COMMON_CURRENCIES } from '../model/CurrencyUnit';
 import { PageHeader } from '../components/PageHeader';
 import { parseMoney, formatMoney } from '../model/Money';
@@ -20,6 +21,8 @@ struct AccountEdit {
   @State type: AccountType = AccountType.BANK;
   @State color: number = 0xFFC107;
   @State criterionInput: string = '';
+  @State tags: Tag[] = [];
+  @State accountTagIds: number[] = [];
 
   private repository: Repository = Repository.getInstance();
   private currencies: CurrencyUnit[] = COMMON_CURRENCIES;
@@ -31,8 +34,16 @@ struct AccountEdit {
     if (params && params['id'] !== undefined) {
       this.accountId = params['id'] as number;
     }
+    this.loadTags();
     if (this.accountId > 0) {
       this.loadAccount();
+    }
+  }
+
+  async loadTags(): Promise<void> {
+    this.tags = await this.repository.getTags();
+    if (this.accountId > 0) {
+      this.accountTagIds = await this.repository.getAccountTagIds(this.accountId);
     }
   }
 
@@ -88,7 +99,7 @@ struct AccountEdit {
 
   private async save(): Promise<void> {
     if (!this.label.trim()) {
-      promptAction.showToast({ message: '请输入账户名称' });
+      promptAction.showToast({ message: $r('app.string.toast_enter_account_name') });
       return;
     }
     const acc = new Account();
@@ -103,15 +114,20 @@ struct AccountEdit {
     acc.uuid = this.accountId > 0 ? acc.uuid : generateUuid();
 
     try {
+      let savedId = this.accountId;
       if (this.accountId > 0) {
         await this.repository.updateAccount(acc);
       } else {
-        await this.repository.insertAccount(acc);
+        savedId = await this.repository.insertAccount(acc);
       }
-      promptAction.showToast({ message: '保存成功' });
+      // 写账户标签
+      if (savedId > 0) {
+        await this.repository.setAccountTagIds(savedId, this.accountTagIds);
+      }
+      promptAction.showToast({ message: $r('app.string.toast_save_success') });
       router.back();
     } catch (e) {
-      promptAction.showToast({ message: '保存失败' });
+      promptAction.showToast({ message: $r('app.string.toast_save_failed') });
     }
   }
 
@@ -288,6 +304,44 @@ struct AccountEdit {
           .width('100%')
           .height(48)
           .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
+
+          // 标签（对齐安卓账户标签）
+          if (this.tags.length > 0) {
+            Row() {
+              Text('标签')
+                .fontSize(14)
+                .fontColor($r('app.color.textPrimary'))
+                .width('30%')
+              Flex({ wrap: FlexWrap.Wrap }) {
+                ForEach(this.tags, (tag: Tag) => {
+                  Row() {
+                    Text(tag.label)
+                      .fontSize(12)
+                      .fontColor(this.accountTagIds.indexOf(tag.id) >= 0 ? Color.White : $r('app.color.textPrimary'))
+                      .padding({ left: 8, right: 8, top: 3, bottom: 3 })
+                  }
+                  .backgroundColor(this.accountTagIds.indexOf(tag.id) >= 0 ? $r('app.color.primaryColor') : $r('app.color.cardBackgroundColor'))
+                  .borderRadius(8)
+                  .margin({ right: 6, bottom: 6 })
+                  .onClick(() => {
+                    const idx = this.accountTagIds.indexOf(tag.id);
+                    if (idx >= 0) {
+                      this.accountTagIds.splice(idx, 1);
+                      this.accountTagIds = [...this.accountTagIds];
+                    } else {
+                      this.accountTagIds = [...this.accountTagIds, tag.id];
+                    }
+                  })
+                }, (tag: Tag) => `atag_${tag.id}`)
+              }
+              .layoutWeight(1)
+            }
+            .width('100%')
+            .height(48)
+            .padding({ top: 8, bottom: 8 })
+            .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
+            .alignItems(VerticalAlign.Top)
+          }
         }
         .width('100%')
         .padding({ left: 16, right: 16, top: 8 })

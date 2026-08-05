@@ -143,6 +143,14 @@
     {
       "name": "summaryCardBackground",
       "value": "#211A26"
+    },
+    {
+      "name": "defaultAccountColor",
+      "value": "#4DB6AC"
+    },
+    {
+      "name": "defaultTagColor",
+      "value": "#0050A7"
     }
   ]
 }

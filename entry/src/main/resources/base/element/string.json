@@ -559,6 +559,86 @@
     {
       "name": "ai_assistant_tips",
       "value": "AI 建议"
+    },
+    {
+      "name": "permission_camera_reason",
+      "value": "用于拍照添加附件"
+    },
+    {
+      "name": "toast_enter_account_name",
+      "value": "请输入账户名称"
+    },
+    {
+      "name": "toast_save_success",
+      "value": "保存成功"
+    },
+    {
+      "name": "toast_save_failed",
+      "value": "保存失败"
+    },
+    {
+      "name": "toast_deleted",
+      "value": "已删除"
+    },
+    {
+      "name": "toast_saved_continue",
+      "value": "已保存，继续新建"
+    },
+    {
+      "name": "toast_select_account",
+      "value": "请选择账户"
+    },
+    {
+      "name": "toast_select_target_account",
+      "value": "请选择目标账户"
+    },
+    {
+      "name": "toast_enter_amount",
+      "value": "请输入金额"
+    },
+    {
+      "name": "toast_add_split_part",
+      "value": "请至少添加一个拆分项"
+    },
+    {
+      "name": "toast_split_save_failed",
+      "value": "拆分保存失败"
+    },
+    {
+      "name": "toast_camera_permission",
+      "value": "需要相机权限才能拍照"
+    },
+    {
+      "name": "toast_no_camera",
+      "value": "未检测到相机设备"
+    },
+    {
+      "name": "toast_camera_device",
+      "value": "拍照功能需在真机上使用"
+    },
+    {
+      "name": "toast_pick_image_failed",
+      "value": "选择图片失败"
+    },
+    {
+      "name": "toast_pick_file_failed",
+      "value": "选择文件失败"
+    },
+    {
+      "name": "toast_search_developing",
+      "value": "搜索功能开发中"
+    },
+    {
+      "name": "toast_create_account_first",
+      "value": "请先创建账户"
+    },
+    {
+      "name": "toast_tx_generated",
+      "value": "已生成交易"
+    },
+    {
+      "name": "toast_no_plan_due",
+      "value": "暂无可生成的交易（检查周期日期）"
     }
   ]
 }

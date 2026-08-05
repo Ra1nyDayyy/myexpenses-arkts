@@ -75,20 +75,20 @@ export struct TransactionRow {
     return $r('app.color.UNRECONCILED');
   }
 
-  private iconText(): string {
+  private iconResource(): Resource {
     if (this.transaction.isTransfer()) {
-      return '⇄';
+      return $r('app.media.ic_transfer');
     }
     if (this.transaction.isSplit()) {
-      return '☰';
+      return $r('app.media.ic_split');
     }
     if (this.transaction.amount > 0) {
-      return '↑';
+      return $r('app.media.ic_income');
     }
     if (this.transaction.amount < 0) {
-      return '↓';
+      return $r('app.media.ic_expense');
     }
-    return '−';
+    return $r('app.media.ic_neutral');
   }
 
   private dateText(): string {
@@ -102,10 +102,10 @@ export struct TransactionRow {
     Row() {
       // 类别图标
       Stack() {
-        Text(this.iconText())
-          .fontSize(18)
-          .fontColor(this.amountColor())
-          .fontWeight(FontWeight.Bold)
+        Image(this.iconResource())
+          .width(18)
+          .height(18)
+          .fillColor(this.amountColor())
       }
       .width(30)
       .height(30)

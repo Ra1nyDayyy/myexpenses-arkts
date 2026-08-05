@@ -82,7 +82,7 @@ export struct TransactionListPage {
     Column() {
       if (this.transactions.length === 0) {
         EmptyState({
-          icon: '💳',
+          iconResource: $r('app.media.ic_tab_transaction'),
           title: '未有开支!',
           subtitle: '点击下方按钮记录第一笔交易',
           actionText: '新建交易',

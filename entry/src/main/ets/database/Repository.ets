@@ -1,10 +1,11 @@
 import { relationalStore } from '@kit.ArkData';
 import { DbHelper } from './DbHelper';
 import { Account, AccountType, AccountGrouping, SortDirection } from '../model/Account';
-import { Transaction, CrStatus } from '../model/Transaction';
+import { Transaction, CrStatus, SPLIT_CATID } from '../model/Transaction';
 import { Category } from '../model/Category';
-import { PaymentMethod, Payee, Tag, Budget, Debt } from '../model/SupportEntities';
+import { PaymentMethod, Payee, Tag, Budget, Debt, Template } from '../model/SupportEntities';
 import { currencyByCode } from '../model/CurrencyUnit';
+import { generateUuid } from '../common/FormatUtils';
 
 /**
  * 数据仓库：对应 Android db2/Repository* 系列
@@ -319,6 +320,40 @@ export class Repository {
     return this.store().update(values, predicates);
   }
 
+  /**
+   * 保存交易附件（先删后插）
+   */
+  async setTransactionAttachments(transactionId: number, uris: string[]): Promise<void> {
+    const delPred = new relationalStore.RdbPredicates('attachments');
+    delPred.equalTo('transaction_id', transactionId);
+    await this.store().delete(delPred);
+    for (let uri of uris) {
+      const values: relationalStore.ValuesBucket = {
+        'transaction_id': transactionId,
+        'uri': uri
+      };
+      await this.store().insert('attachments', values);
+    }
+  }
+
+  /**
+   * 获取交易附件 uri 列表
+   */
+  async getTransactionAttachments(transactionId: number): Promise<string[]> {
+    const predicates = new relationalStore.RdbPredicates('attachments');
+    predicates.equalTo('transaction_id', transactionId);
+    const result = await this.store().query(predicates);
+    const uris: string[] = [];
+    try {
+      while (result.goToNextRow()) {
+        uris.push(result.getString(result.getColumnIndex('uri')));
+      }
+    } finally {
+      result.close();
+    }
+    return uris;
+  }
+
   async deleteTransaction(id: number): Promise<number> {
     const predicates = new relationalStore.RdbPredicates('transactions');
     predicates.equalTo('id', id);
@@ -331,6 +366,68 @@ export class Repository {
       count += await this.deleteTransaction(id);
     }
     return count;
+  }
+
+  /**
+   * 保存拆分交易：父交易（amount=0, cat_id=SPLIT）+ 子交易集合
+   * @param parentId 父交易 id；<=0 表示新建父交易
+   * @returns 父交易 id
+   */
+  async saveSplitTransaction(parent: Transaction, parts: Transaction[]): Promise<number> {
+    parent.categoryId = SPLIT_CATID;
+    parent.amount = 0;
+    let savedParentId = parent.id;
+    if (parent.id > 0) {
+      await this.updateTransaction(parent);
+    } else {
+      parent.uuid = generateUuid();
+      savedParentId = await this.insertTransaction(parent);
+    }
+    // 先删旧子交易
+    const delPred = new relationalStore.RdbPredicates('transactions');
+    delPred.equalTo('parent_id', savedParentId);
+    await this.store().delete(delPred);
+    // 插入子交易
+    for (let part of parts) {
+      part.parentId = savedParentId;
+      part.accountId = parent.accountId;
+      part.date = parent.date;
+      part.valueDate = parent.valueDate;
+      part.uuid = generateUuid();
+      await this.insertTransaction(part);
+    }
+    return savedParentId;
+  }
+
+  /**
+   * 获取拆分交易的子交易列表
+   */
+  async getSplitParts(parentId: number): Promise<Transaction[]> {
+    const predicates = new relationalStore.RdbPredicates('transactions');
+    predicates.equalTo('parent_id', parentId);
+    const result = await this.store().query(predicates);
+    const list: Transaction[] = [];
+    try {
+      while (result.goToNextRow()) {
+        list.push(this.rowToTransaction(result));
+      }
+    } finally {
+      result.close();
+    }
+    for (let t of list) {
+      await this.fillTransactionDisplay(t);
+    }
+    return list;
+  }
+
+  /**
+   * 删除拆分父交易及其子交易
+   */
+  async deleteSplitTransaction(parentId: number): Promise<number> {
+    const delPred = new relationalStore.RdbPredicates('transactions');
+    delPred.equalTo('parent_id', parentId);
+    await this.store().delete(delPred);
+    return this.deleteTransaction(parentId);
   }
 
   async setTransactionCrStatus(id: number, cr: CrStatus): Promise<number> {
@@ -423,6 +520,7 @@ export class Repository {
 
   async getCategories(): Promise<Category[]> {
     const predicates = new relationalStore.RdbPredicates('categories');
+    predicates.orderByAsc('sort_order');
     predicates.orderByAsc('label');
     const result = await this.store().query(predicates);
     const list: Category[] = [];
@@ -449,6 +547,18 @@ export class Repository {
       result.close();
     }
     return cat;
+  }
+
+  /**
+   * 批量更新分类排序（拖拽排序持久化）
+   */
+  async updateCategoryOrders(ids: number[]): Promise<void> {
+    for (let i = 0; i < ids.length; i++) {
+      const values: relationalStore.ValuesBucket = { 'sort_order': i };
+      const predicates = new relationalStore.RdbPredicates('categories');
+      predicates.equalTo('id', ids[i]);
+      await this.store().update(values, predicates);
+    }
   }
 
   async insertCategory(cat: Category): Promise<number> {
@@ -640,6 +750,40 @@ export class Repository {
 
   // ==================== 标签 ====================
 
+  /**
+   * 获取账户关联标签 id
+   */
+  async getAccountTagIds(accountId: number): Promise<number[]> {
+    const predicates = new relationalStore.RdbPredicates('accounts_tags');
+    predicates.equalTo('account_id', accountId);
+    const result = await this.store().query(predicates);
+    const ids: number[] = [];
+    try {
+      while (result.goToNextRow()) {
+        ids.push(result.getLong(result.getColumnIndex('tag_id')));
+      }
+    } finally {
+      result.close();
+    }
+    return ids;
+  }
+
+  /**
+   * 设置账户关联标签（先删后插）
+   */
+  async setAccountTagIds(accountId: number, tagIds: number[]): Promise<void> {
+    const delPred = new relationalStore.RdbPredicates('accounts_tags');
+    delPred.equalTo('account_id', accountId);
+    await this.store().delete(delPred);
+    for (let tagId of tagIds) {
+      const values: relationalStore.ValuesBucket = {
+        'tag_id': tagId,
+        'account_id': accountId
+      };
+      await this.store().insert('accounts_tags', values);
+    }
+  }
+
   async getTags(): Promise<Tag[]> {
     const predicates = new relationalStore.RdbPredicates('tags');
     predicates.orderByAsc('label');
@@ -804,5 +948,235 @@ export class Repository {
       await this.fillTransactionDisplay(t);
     }
     return list;
+  }
+
+  // ==================== 模板 ====================
+
+  async getTemplates(): Promise<Template[]> {
+    const predicates = new relationalStore.RdbPredicates('templates');
+    predicates.orderByDesc('id');
+    const result = await this.store().query(predicates);
+    const list: Template[] = [];
+    try {
+      while (result.goToNextRow()) {
+        const tpl = new Template();
+        tpl.id = result.getLong(result.getColumnIndex('id'));
+        tpl.title = result.getString(result.getColumnIndex('title'));
+        tpl.comment = result.getString(result.getColumnIndex('comment'));
+        tpl.amount = result.getLong(result.getColumnIndex('amount'));
+        tpl.accountId = result.getLong(result.getColumnIndex('account_id'));
+        const catIdx = result.getColumnIndex('cat_id');
+        tpl.categoryId = result.isColumnNull(catIdx) ? -1 : result.getLong(catIdx);
+        const payeeIdx = result.getColumnIndex('payee_id');
+        tpl.payeeId = result.isColumnNull(payeeIdx) ? -1 : result.getLong(payeeIdx);
+        const methodIdx = result.getColumnIndex('method_id');
+        tpl.methodId = result.isColumnNull(methodIdx) ? -1 : result.getLong(methodIdx);
+        const transferIdx = result.getColumnIndex('transfer_account');
+        tpl.transferAccountId = result.isColumnNull(transferIdx) ? -1 : result.getLong(transferIdx);
+        tpl.parentId = result.getLong(result.getColumnIndex('parent_id'));
+        tpl.uuid = result.getString(result.getColumnIndex('uuid'));
+        tpl.isIncome = result.getLong(result.getColumnIndex('is_income')) === 1;
+        const recIdx = result.getColumnIndex('recurrence');
+        tpl.recurrence = result.isColumnNull(recIdx) ? 0 : result.getLong(recIdx);
+        const dtIdx = result.getColumnIndex('dt_start');
+        tpl.dtStart = result.isColumnNull(dtIdx) ? 0 : result.getLong(dtIdx);
+        const lastIdx = result.getColumnIndex('last_executed');
+        tpl.lastExecuted = result.isColumnNull(lastIdx) ? 0 : result.getLong(lastIdx);
+        const autoIdx = result.getColumnIndex('auto_execute');
+        tpl.autoExecute = !result.isColumnNull(autoIdx) && result.getLong(autoIdx) === 1;
+        const advIdx = result.getColumnIndex('advance_days');
+        tpl.advanceDays = result.isColumnNull(advIdx) ? 0 : result.getLong(advIdx);
+        list.push(tpl);
+      }
+    } finally {
+      result.close();
+    }
+    // 填充展示字段
+    for (let tpl of list) {
+      if (tpl.categoryId >= 0) {
+        const cat = await this.getCategory(tpl.categoryId);
+        if (cat) {
+          tpl.categoryPath = cat.label;
+        }
+      }
+      if (tpl.payeeId >= 0) {
+        const payee = await this.getPayee(tpl.payeeId);
+        if (payee) {
+          tpl.payeeName = payee.name;
+        }
+      }
+      if (tpl.methodId >= 0) {
+        const method = await this.getPaymentMethod(tpl.methodId);
+        if (method) {
+          tpl.methodLabel = method.label;
+        }
+      }
+      const acc = await this.getAccount(tpl.accountId);
+      if (acc) {
+        tpl.currency = acc.currency;
+      }
+    }
+    return list;
+  }
+
+  async insertTemplate(tpl: Template): Promise<number> {
+    const values: relationalStore.ValuesBucket = {
+      'title': tpl.title,
+      'comment': tpl.comment,
+      'amount': tpl.amount,
+      'account_id': tpl.accountId,
+      'cat_id': tpl.categoryId >= 0 ? tpl.categoryId : null,
+      'payee_id': tpl.payeeId >= 0 ? tpl.payeeId : null,
+      'method_id': tpl.methodId >= 0 ? tpl.methodId : null,
+      'transfer_account': tpl.transferAccountId >= 0 ? tpl.transferAccountId : null,
+      'parent_id': tpl.parentId >= 0 ? tpl.parentId : null,
+      'uuid': generateUuid(),
+      'is_income': tpl.isIncome ? 1 : 0,
+      'recurrence': tpl.recurrence,
+      'dt_start': tpl.dtStart > 0 ? tpl.dtStart : null,
+      'last_executed': tpl.lastExecuted > 0 ? tpl.lastExecuted : null,
+      'auto_execute': tpl.autoExecute ? 1 : 0,
+      'advance_days': tpl.advanceDays
+    };
+    return this.store().insert('templates', values);
+  }
+
+  /**
+   * 更新模板（含周期字段）
+   */
+  async updateTemplate(tpl: Template): Promise<number> {
+    const values: relationalStore.ValuesBucket = {
+      'title': tpl.title,
+      'comment': tpl.comment,
+      'amount': tpl.amount,
+      'cat_id': tpl.categoryId >= 0 ? tpl.categoryId : null,
+      'payee_id': tpl.payeeId >= 0 ? tpl.payeeId : null,
+      'method_id': tpl.methodId >= 0 ? tpl.methodId : null,
+      'transfer_account': tpl.transferAccountId >= 0 ? tpl.transferAccountId : null,
+      'recurrence': tpl.recurrence,
+      'dt_start': tpl.dtStart > 0 ? tpl.dtStart : null,
+      'last_executed': tpl.lastExecuted > 0 ? tpl.lastExecuted : null,
+      'auto_execute': tpl.autoExecute ? 1 : 0,
+      'advance_days': tpl.advanceDays
+    };
+    const predicates = new relationalStore.RdbPredicates('templates');
+    predicates.equalTo('id', tpl.id);
+    return this.store().update(values, predicates);
+  }
+
+  /**
+   * 按周期生成交易（计划固定收支）
+   * 计算下一次应发生的日期并创建交易，更新 last_executed
+   * @returns 生成的交易 id；无到期返回 0
+   */
+  async generatePlanTransaction(tpl: Template): Promise<number> {
+    if (tpl.recurrence <= 0) {
+      return 0;
+    }
+    const now = Math.floor(Date.now() / 1000);
+    const due = this.nextDue(tpl, now);
+    if (due <= 0 || due > now + 90 * 86400) {
+      return 0; // 未来超过 90 天不生成
+    }
+    // 自动执行：允许提前 advanceDays 天生成
+    if (tpl.autoExecute) {
+      const advance = Math.min(tpl.advanceDays, 30) * 86400;
+      if (due > now + advance) {
+        return 0; // 未到提前窗口
+      }
+    }
+    const t = new Transaction();
+    t.accountId = tpl.accountId;
+    t.amount = tpl.isIncome ? Math.abs(tpl.amount) : -Math.abs(tpl.amount);
+    t.comment = tpl.comment;
+    t.categoryId = tpl.categoryId;
+    t.payeeId = tpl.payeeId;
+    t.methodId = tpl.methodId;
+    t.transferAccountId = tpl.transferAccountId;
+    t.date = due;
+    t.valueDate = due;
+    t.uuid = generateUuid();
+    t.crStatus = CrStatus.UNRECONCILED;
+    const txId = await this.insertTransaction(t);
+    // 更新 last_executed
+    tpl.lastExecuted = due;
+    await this.updateTemplate(tpl);
+    return txId;
+  }
+
+  /**
+   * 计算模板下一次应发生的时间
+   */
+  private nextDue(tpl: Template, now: number): number {
+    const start = tpl.dtStart > 0 ? tpl.dtStart : now;
+    const after = tpl.lastExecuted > 0 ? tpl.lastExecuted : start - 1;
+    const startDate = new Date(start * 1000);
+    const afterDate = new Date(after * 1000);
+    let cursor = new Date(afterDate.getFullYear(), afterDate.getMonth(), afterDate.getDate() + 1, 12, 0, 0);
+    const dayOfWeekStart = startDate.getDay();
+    const dayOfMonthStart = startDate.getDate();
+    const recur = tpl.recurrence;
+    if (recur === 1) { // ONETIME
+      return start > now ? start : 0;
+    }
+    let count = 0;
+    while (count < 400) {
+      if (recur === 2) { // DAILY
+        // 每天
+      } else if (recur === 3) { // WEEKLY
+        if (cursor.getDay() !== dayOfWeekStart) {
+          cursor.setDate(cursor.getDate() + 1);
+          count++;
+          continue;
+        }
+      } else if (recur === 4) { // MONTHLY
+        if (cursor.getDate() !== dayOfMonthStart) {
+          cursor.setDate(cursor.getDate() + 1);
+          count++;
+          continue;
+        }
+      } else if (recur === 5) { // LAST_DAY_OF_MONTH
+        const nextMonth = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
+        if (cursor.getDate() !== nextMonth.getDate()) {
+          cursor.setDate(cursor.getDate() + 1);
+          count++;
+          continue;
+        }
+      } else if (recur === 6) { // YEARLY
+        if (cursor.getMonth() !== startDate.getMonth() || cursor.getDate() !== dayOfMonthStart) {
+          cursor.setDate(cursor.getDate() + 1);
+          count++;
+          continue;
+        }
+      }
+      break;
+    }
+    const due = Math.floor(cursor.getTime() / 1000);
+    return due > now ? due : 0;
+  }
+
+  async deleteTemplate(id: number): Promise<number> {
+    const predicates = new relationalStore.RdbPredicates('templates');
+    predicates.equalTo('id', id);
+    return this.store().delete(predicates);
+  }
+
+  /**
+   * 从模板实例化为交易（重复交易）
+   */
+  async instantiateTemplate(tpl: Template): Promise<number> {
+    const t = new Transaction();
+    t.accountId = tpl.accountId;
+    t.amount = tpl.isIncome ? Math.abs(tpl.amount) : -Math.abs(tpl.amount);
+    t.comment = tpl.comment;
+    t.categoryId = tpl.categoryId;
+    t.payeeId = tpl.payeeId;
+    t.methodId = tpl.methodId;
+    t.transferAccountId = tpl.transferAccountId;
+    t.date = Math.floor(Date.now() / 1000);
+    t.valueDate = t.date;
+    t.uuid = generateUuid();
+    t.crStatus = CrStatus.UNRECONCILED;
+    return this.insertTransaction(t);
   }
 }

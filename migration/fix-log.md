@@ -147,3 +147,62 @@
   3. **UI-003（P3）**：拖拽排序待实现（递归树结构与 List.onItemMove 冲突，需重构）
   4. **UI-004（P3）**：保存按钮样式差异标记可接受
 - 复测：BUILD SUCCESSFUL，模拟器验证更多页 SVG 图标、记账编辑页计算器弹出均正常
+
+## FIX-018: 功能缺失补齐（第十一轮，F-001~F-008 全部完成）
+
+- 按 ui-function-comparison-full.md 14.2 功能缺失清单逐项实现：
+  1. **F-001 账户拖拽排序**：扁平 List + editMode + onItemMove，reorderAccounts 内存重排
+  2. **F-002 金额计算器**：CalculatorDialog（数字键 + 四则运算 + 正负/百分号 + 确定）
+  3. **F-003 附件添加**：DocumentViewPicker 选附件 + 附件计数（📎入口）
+  4. **F-004 拆分交易**：拆分 Tab + 拆分款项列表 + 添加拆分项，saveSplitTransaction 父交易+子交易均摊
+  5. **F-005 重复交易（模板体系）**：templates 表 + 模板 Tab 列表 + 新建模板 + "用于交易"实例化
+  6. **F-006 分类拖拽排序**：根分类 List + editMode + onItemMove
+  7. **F-007 账户标签**：accounts_tags 表 + Repository 方法 + 标签多选 UI
+  8. **F-008 保存并新建**：保存后清空金额/备注/类别，保留账户/类型/日期
+- 复测：BUILD SUCCESSFUL，模拟器逐项验证通过（模板创建/用于交易、拆分项添加等）
+
+## FIX-019: 门禁收尾（第十二轮）
+
+- 补齐 AccountEdit LIGHT GUI 对比：Android Edit Account 页 → ArkUI 账户编辑页，像素差异 4.41%（低于 5% 阈值 PASS），四图生成（ACC_EDIT_V2_*）
+- 更新 gui-matrix（G-AE-01）、problem-ledger（G-010）
+- 剩余阻塞（环境性）：DARK 主题截图（模拟器无法命令行切深色）、AiAssistant（Android 无对应页面）、真机矩阵 G-004、签名 HAP G-005、独立审查
+
+## FIX-020: 差异清单收尾（第十三轮）
+
+- 处理剩余差异清单：
+  1. **字符/Emoji 违规（7 处）**：TransactionRow 图标（⇄/☰/↑/↓/−）→ ic_transfer/ic_split/ic_income/ic_expense/ic_neutral；AccountRow ∑ → ic_exclude；EmptyState 默认 📋 → 空
+  2. **分类拖拽持久化**：categories 表加 sort_order + Repository updateCategoryOrders + getCategories 按 sort_order 排序
+  3. **拆分子项独立编辑**：ActionSheet（编辑金额/选择分类/删除）+ 分类选择回传 onPageShow
+  4. **附件来源扩展**：相册（PhotoViewPicker）+ 文件（DocumentViewPicker）；**附件缩略图预览**（横排缩略图 + 删除角标）
+  5. **计划补齐**：自动执行开关（auto_execute）+ 提前执行天数（advance_days 0-30）+ 设置下次执行日期（DatePickerDialog）
+  6. **FAB 圆角矩形**：圆形 → 胶囊形 + 收入/支出箭头图标（对齐 Material3）
+  7. **移除账户 Tab 重复 FAB**：只保留交易页 FAB
+- 新增 SVG：ic_split/ic_neutral/ic_exclude（累计 24 个）
+- 新增数据字段：templates 表 auto_execute/advance_days
+- 保留（按策略）：账户 headerBar（#18）、输入框圆角填充（#21）、深色 SVG 用 fillColor 适配（#8）
+- 受限：拍照入口（需完整 CameraManager 会话 + CAMERA 权限 + 模拟器无相机硬件）
+- 复测：BUILD SUCCESSFUL（HAP 1.08MB），模拟器验证 FAB 胶囊形 + 交易页正常
+
+## FIX-021: 拍照入口实现（第十四轮）
+
+- 实现拍照入口：附件 ActionSheet 增加"拍照"选项（相册/文件/拍照）
+- module.json5 添加 CAMERA 权限（reason + usedScene，string.json 加 permission_camera_reason）
+- takePhoto 流程：申请相机权限 → 检测相机设备 → 完整相机会话（PhotoSession）拍摄
+- 说明：完整 PhotoSession.capture 因 SDK 类型定义与 ArkTS 严格类型不兼容（createPhotoOutput 不在 PhotoSession 接口），降级为能力检测 + 提示真机使用；权限申请已实测弹出正确对话框
+- 复测：BUILD SUCCESSFUL，模拟器实测点击"拍照"弹出相机权限对话框"允许'开支助手'访问你的相机？用于拍照添加附件"
+
+## FIX-022: 代码规范修复（第十五轮）
+
+- 处理代码规范性问题：
+  1. **硬编码颜色（中）**：账户默认色 #009688 → defaultAccountColor 资源；标签默认色 #0050A7 → defaultTagColor 资源（base+dark）
+  2. **硬编码字符串（中）**：19 处 showToast 文案 → string.json 资源（toast_* key），涉及 AccountEdit/CategoryManage/ExpenseEdit/Index
+  3. **硬编码尺寸（低）**：fontSize/height/width 字面量（287 处）——ArkUI 常见做法，文档标低严重度，保留
+- 保留说明：阴影色 #40000000、FAB 分隔线 #66FFFFFF 为透明色深浅色通用，保留字面量合理
+- 复测：BUILD SUCCESSFUL，模拟器应用稳定
+
+## FIX-023: BUG-C 修复（全流程测试发现）
+
+- 问题：模板行周期标签不刷新（周期保存成功 recurrence=4，但 UI 副信息不显示周期标签）
+- 根因：ForEach keyGenerator 用 `tpl_${tpl.id}`（id 不变），周期变化后 item 组件被复用且不重建，闭包内 tpl.recurrence 未重新渲染
+- 修复：keyGenerator 改为 `tpl_${tpl.id}_${tpl.recurrence}_${tpl.advanceDays}_${tpl.autoExecute}`，周期/提前天数/自动执行变化时 key 变 → item 重建 → 标签刷新
+- 复测：BUILD SUCCESSFUL，模拟器验证"每月"→设"每周"后标签实时刷新为"每周"，数据库 recurrence=3

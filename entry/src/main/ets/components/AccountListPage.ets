@@ -28,7 +28,17 @@ export struct AccountListPage {
   };
   onCreateAccount: () => void = () => {
   };
+  onReorder: (from: number, to: number) => void = () => {
+  };
   @State expandedId: number = -1;
+  @State dragEditMode: boolean = false;
+
+  /**
+   * 长按任一账户行进入拖拽排序模式（对齐安卓 ItemTouchHelper）
+   */
+  private enableDrag(): void {
+    this.dragEditMode = true;
+  }
 
   private groups(): Map<string, Account[]> {
     const map = new Map<string, Account[]>();
@@ -85,7 +95,7 @@ export struct AccountListPage {
 
       if (this.accounts.length === 0) {
         EmptyState({
-          icon: '🏦',
+          iconResource: $r('app.media.ic_empty_account'),
           title: '没有账户。',
           subtitle: '创建第一个账户开始记账',
           actionText: '新建账户',
@@ -95,6 +105,47 @@ export struct AccountListPage {
         })
         .width('100%')
         .layoutWeight(1)
+      } else if (this.grouping === AccountGrouping.NONE && this.groupSingle()) {
+        // 扁平 List：支持拖拽排序（对齐安卓 ItemTouchHelper）
+        List({ space: 0 }) {
+          ForEach(this.accounts, (acc: Account) => {
+            ListItem() {
+              AccountRow({
+                account: acc,
+                selected: acc.id === this.selectedAccountId,
+                expanded: acc.id === this.expandedId,
+                showEquivalent: this.showEquivalent,
+                onToggle: (id: number) => {
+                  animateTo({ duration: 200, curve: Curve.EaseInOut }, () => {
+                    this.expandedId = this.expandedId === id ? -1 : id;
+                  });
+                },
+                onNavigate: (id: number) => {
+                  this.onSelect(id);
+                },
+                onEdit: (id: number) => {
+                  this.onEdit(id);
+                },
+                onDelete: (id: number) => {
+                  this.onDelete(id);
+                },
+                onToggleSealed: (id: number) => {
+                  this.onToggleSealed(id);
+                },
+                onToggleExclude: (id: number) => {
+                  this.onToggleExclude(id);
+                }
+              })
+            }
+          }, (acc: Account) => `account_${acc.id}`)
+        }
+        .layoutWeight(1)
+        .width('100%')
+        .editMode(this.dragEditMode)
+        .onItemMove((from: number, to: number) => {
+          this.onReorder(from, to);
+          return true;
+        })
       } else {
         List({ space: 0 }) {
           // 分组渲染
@@ -158,6 +209,10 @@ export struct AccountListPage {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.drawerBackground'))
+  }
+
+  private groupSingle(): boolean {
+    return this.groups().size <= 1;
   }
 
   private groupSumLabel(list: Account[]): string {

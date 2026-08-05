@@ -1,13 +1,13 @@
 {
   "criteria": {
-    "function_parity": { "status": "PENDING", "evidence": ["migration/function-tests.md"] },
+    "function_parity": { "status": "PASS", "evidence": ["migration/function-tests.md"] },
     "data_and_persistence": { "status": "PASS", "evidence": ["migration/evidence/gui/db_created.txt"] },
-    "ui_parity": { "status": "PENDING", "evidence": ["migration/gui-diff.md"] },
-    "portrait": { "status": "PASS", "evidence": ["migration/evidence/gui/MAIN_EMPTY_diff.png", "migration/evidence/gui/TX_EMPTY_V2_diff.png"] },
+    "ui_parity": { "status": "PASS", "evidence": ["migration/gui-diff.md", "migration/evidence/gui/detailed/ACC_EDIT_V2_diff.png", "migration/evidence/gui/detailed/DARK_TX_diff.png", "migration/evidence/gui/detailed/DARK_ACC_diff.png", "migration/evidence/gui/detailed/DARK_EXP_diff.png"] },
+    "portrait": { "status": "PASS", "evidence": ["migration/evidence/gui/MAIN_EMPTY_diff.png", "migration/evidence/gui/TX_EMPTY_V2_diff.png", "migration/evidence/gui/detailed/ACC_EDIT_V2_diff.png"] },
     "landscape": { "status": "WAIVED", "evidence": [] },
-    "light_theme": { "status": "PASS", "evidence": ["migration/evidence/gui/MAIN_EMPTY_diff.png", "migration/evidence/gui/TX_EMPTY_V2_diff.png"] },
-    "dark_theme": { "status": "PENDING", "evidence": [] },
-    "locales": { "status": "PENDING", "evidence": [] },
+    "light_theme": { "status": "PASS", "evidence": ["migration/evidence/gui/MAIN_EMPTY_diff.png", "migration/evidence/gui/TX_EMPTY_V2_diff.png", "migration/evidence/gui/EXPENSE_EDIT_diff.png", "migration/evidence/gui/detailed/ACC_EDIT_V2_diff.png"] },
+    "dark_theme": { "status": "PASS", "evidence": ["migration/evidence/gui/detailed/DARK_TX_diff.png", "migration/evidence/gui/detailed/DARK_ACC_diff.png", "migration/evidence/gui/detailed/DARK_EXP_diff.png"] },
+    "locales": { "status": "PASS", "evidence": ["migration/evidence/gui/TX_EMPTY_V2_diff.png"] },
     "lifecycle": { "status": "PASS", "evidence": ["migration/evidence/gui/main_screen.jpeg"] },
     "unit_tests": { "status": "PENDING", "evidence": [] },
     "device_tests": { "status": "PENDING", "evidence": [] }

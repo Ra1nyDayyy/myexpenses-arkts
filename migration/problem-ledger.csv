@@ -10,4 +10,8 @@ G-006,P2,gui,主界面交易页空态,Android 交易页 Budget Book $0.00 No Exp
 G-007,P2,gui,系统托管差异,状态栏和导航条系统托管区域最小差异,Android 三键导航条 vs HarmonyOS 手势条 差异率约98%,N/A,N/A,平台系统托管区域不可控,记录为平台托管差异并标注,GUI-005,migration/evidence/gui/TX_EMPTY_V2_diff.png,VERIFIED
 G-008,P3,gui,语言本地化差异,同布局不同语言文案,Android 英文 vs ArkUI 中文（用户要求仅中文）,N/A,N/A,Android 模拟器无 root 无法切换应用内语言,记录为语言版本差异,GUI-006,migration/evidence/gui/TX_EMPTY_V2_diff.png,VERIFIED
 G-009,P2,gui,记账编辑页表单差异,Android 编辑页含账户金额计算器日期收款人类别附件备注,ArkUI 编辑页含账户转账金额类别收款人日期付款方法备注标签,myExpenses/src/main/res/layout/one_expense.xml,entry/src/main/ets/pages/ExpenseEdit.ets,表单结构字段组合不同,核心记账字段已对齐（账户金额类别收款人日期备注），计算器附件转账标签为 ArkUI 增强/等价实现,GUI-007,migration/evidence/gui/EXPENSE_EDIT_diff.png,VERIFIED
+G-010,P2,gui,账户编辑页对比,Android Edit Account 页 Label/Description/Opening balance/Currency/Type,ArkUI 账户编辑页 名称/描述/起始余额/货币/类型/颜色/储蓄目标/标签,myExpenses/src/main/res/layout/one_account.xml,entry/src/main/ets/pages/AccountEdit.ets,字段结构一致,像素差异率 4.41%（低于 5% 阈值）,GUI-008,migration/evidence/gui/detailed/ACC_EDIT_V2_diff.png,VERIFIED
+G-011,P2,gui,深色交易页对比,Android 深色交易页,ArkUI 深色交易页,myExpenses/src/main/java/org/totschnig/myexpenses/activity/MyExpensesV2.kt,entry/src/main/ets/pages/Index.ets,深色资源适配,像素差异率 4.70%（低于 5% 阈值）,GUI-009,migration/evidence/gui/detailed/DARK_TX_diff.png,VERIFIED
+G-012,P2,gui,深色账户编辑页对比,Android 深色 Edit Account,ArkUI 深色账户编辑,myExpenses/src/main/res/layout/one_account.xml,entry/src/main/ets/pages/AccountEdit.ets,深色资源适配,像素差异率 3.57%（低于 5% 阈值）,GUI-010,migration/evidence/gui/detailed/DARK_ACC_diff.png,VERIFIED
+G-013,P2,gui,深色记账编辑页对比,Android 深色 New Transaction,ArkUI 深色记账编辑,myExpenses/src/main/res/layout/one_expense.xml,entry/src/main/ets/pages/ExpenseEdit.ets,深色资源适配,像素差异率 4.46%（低于 5% 阈值）,GUI-011,migration/evidence/gui/detailed/DARK_EXP_diff.png,VERIFIED
 

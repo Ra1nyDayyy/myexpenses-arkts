@@ -163,9 +163,9 @@ struct TagManage {
     .backgroundColor($r('app.color.pageBackground'))
   }
 
-  private tagColor(color: number): string {
+  private tagColor(color: number): ResourceColor {
     if (!color) {
-      return '#0050A7';
+      return $r('app.color.defaultTagColor');
     }
     const rgb = color & 0xFFFFFF;
     return '#' + rgb.toString(16).padStart(6, '0').toUpperCase();

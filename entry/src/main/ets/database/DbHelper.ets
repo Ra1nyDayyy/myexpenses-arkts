@@ -63,7 +63,8 @@ export const CREATE_TABLES: string[] = [
      color INTEGER,
      icon TEXT,
      uuid TEXT,
-     type INTEGER NOT NULL DEFAULT 0
+     type INTEGER NOT NULL DEFAULT 0,
+     sort_order INTEGER NOT NULL DEFAULT 0
   )`,
   `CREATE TABLE IF NOT EXISTS paymentmethods (
      id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -149,6 +150,32 @@ export const CREATE_TABLES: string[] = [
      flag_sort_key INTEGER NOT NULL DEFAULT 0,
      flag_icon TEXT,
      visible INTEGER NOT NULL DEFAULT 1
+  )`,
+  `CREATE TABLE IF NOT EXISTS templates (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     title TEXT NOT NULL,
+     comment TEXT,
+     amount INTEGER NOT NULL DEFAULT 0,
+     account_id INTEGER NOT NULL,
+     cat_id INTEGER,
+     payee_id INTEGER,
+     method_id INTEGER,
+     transfer_account INTEGER,
+     parent_id INTEGER,
+     uuid TEXT,
+     is_income INTEGER NOT NULL DEFAULT 0,
+     recurrence INTEGER NOT NULL DEFAULT 0,
+     dt_start INTEGER,
+     last_executed INTEGER,
+     auto_execute INTEGER NOT NULL DEFAULT 0,
+     advance_days INTEGER NOT NULL DEFAULT 0
+  )`,
+  `CREATE TABLE IF NOT EXISTS attachments (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     transaction_id INTEGER NOT NULL,
+     uri TEXT NOT NULL,
+     mime_type TEXT,
+     file_name TEXT
   )`
 ];
 

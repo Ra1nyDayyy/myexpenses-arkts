@@ -1,5 +1,6 @@
 import { Account, AccountGrouping, SortDirection } from '../model/Account';
 import { Transaction, CrStatus } from '../model/Transaction';
+import { Template } from '../model/SupportEntities';
 import { Repository } from '../database/Repository';
 import { SettingsService, PREF_KEY } from '../database/SettingsService';
 import { AccountListPage } from '../components/AccountListPage';
@@ -25,6 +26,7 @@ struct Index {
   @State selectedAccountId: number = -1;
   @State isSelectionMode: boolean = false;
   @State selectedTransactionIds: number[] = [];
+  @State templates: Template[] = [];
 
   private repository: Repository = Repository.getInstance();
   private settings: SettingsService = SettingsService.getInstance();
@@ -45,6 +47,7 @@ struct Index {
       this.grouping = grouping as AccountGrouping;
       this.showEquivalent = showEquivalent;
       this.accounts = await this.repository.getAccounts();
+      this.templates = await this.repository.getTemplates();
       if (this.accounts.length > 0) {
         if (this.selectedAccountId < 0) {
           this.selectedAccountId = this.accounts[0].id;
@@ -148,7 +151,7 @@ struct Index {
   }
 
   private navigateToSearch(): void {
-    promptAction.showToast({ message: '搜索功能开发中' });
+    promptAction.showToast({ message: $r('app.string.toast_search_developing') });
   }
 
   /**
@@ -204,19 +207,19 @@ struct Index {
         Tabs({ barPosition: BarPosition.End }) {
           TabContent() {
             this.accountsTab()
-          }.tabBar(this.tabBuilder(0, '账户', '🏦'))
+          }.tabBar(this.tabBuilder(0, '账户', $r('app.media.ic_tab_account')))
 
           TabContent() {
             this.transactionsTab()
-          }.tabBar(this.tabBuilder(1, '交易', '💳'))
+          }.tabBar(this.tabBuilder(1, '交易', $r('app.media.ic_tab_transaction')))
 
           TabContent() {
             this.templatesTab()
-          }.tabBar(this.tabBuilder(2, '模板', '📋'))
+          }.tabBar(this.tabBuilder(2, '模板', $r('app.media.ic_tab_template')))
 
           TabContent() {
             this.moreTab()
-          }.tabBar(this.tabBuilder(3, '更多', '⋯'))
+          }.tabBar(this.tabBuilder(3, '更多', $r('app.media.ic_tab_more')))
         }
         .width('100%')
         .layoutWeight(1)
@@ -234,11 +237,12 @@ struct Index {
   }
 
   @Builder
-  tabBuilder(tabIndex: number, label: string, emoji: string) {
+  tabBuilder(tabIndex: number, label: string, icon: Resource) {
     Column({ space: 2 }) {
-      Text(emoji)
-        .fontSize(20)
-        .opacity(this.selectedTab === tabIndex ? 1 : 0.6)
+      Image(icon)
+        .width(22)
+        .height(22)
+        .fillColor(this.selectedTab === tabIndex ? $r('app.color.primaryColor') : $r('app.color.textSecondary'))
       Text(label)
         .fontSize(11)
         .fontColor(this.selectedTab === tabIndex ? $r('app.color.primaryColor') : $r('app.color.textSecondary'))
@@ -252,38 +256,46 @@ struct Index {
 
   @Builder
   accountsTab() {
-    Column() {
-      this.headerBar('账户')
-      if (this.accounts.length === 0) {
-        this.emptyState()
-      } else {
-        AccountListPage({
-          accounts: this.accounts,
-          grouping: this.grouping,
-          selectedAccountId: this.selectedAccountId,
-          showEquivalent: this.showEquivalent,
-          onSelect: (id: number) => {
-            this.selectedAccountId = id;
-            this.selectedTab = 1;
-            this.refreshTransactions(id);
-          },
-          onEdit: (id: number) => {
-            this.navigateToAccountEdit(id);
-          },
-          onDelete: (id: number) => {
-            this.deleteAccount(id);
-          },
-          onToggleSealed: (id: number) => {
-            this.toggleSealed(id);
-          },
-          onToggleExclude: (id: number) => {
-            this.toggleExclude(id);
-          },
-          onCreateAccount: () => {
-            this.navigateToAccountEdit(-1);
-          }
-        })
+    Stack() {
+      Column() {
+        this.headerBar('账户')
+        if (this.accounts.length === 0) {
+          this.emptyState()
+        } else {
+          AccountListPage({
+            accounts: this.accounts,
+            grouping: this.grouping,
+            selectedAccountId: this.selectedAccountId,
+            showEquivalent: this.showEquivalent,
+            onReorder: (from: number, to: number) => {
+              this.reorderAccounts(from, to);
+            },
+            onSelect: (id: number) => {
+              this.selectedAccountId = id;
+              this.selectedTab = 1;
+              this.refreshTransactions(id);
+            },
+            onEdit: (id: number) => {
+              this.navigateToAccountEdit(id);
+            },
+            onDelete: (id: number) => {
+              this.deleteAccount(id);
+            },
+            onToggleSealed: (id: number) => {
+              this.toggleSealed(id);
+            },
+            onToggleExclude: (id: number) => {
+              this.toggleExclude(id);
+            },
+            onCreateAccount: () => {
+              this.navigateToAccountEdit(-1);
+            }
+          })
+        }
       }
+      .width('100%')
+      .height('100%')
+
     }
     .width('100%')
     .height('100%')
@@ -326,28 +338,33 @@ struct Index {
       .width('100%')
       .height('100%')
 
-      // 鸿蒙圆形 FAB（点击进入记账编辑）
+      // 交易 FAB（对齐安卓 Material3 圆角矩形 + 展开菜单）
       if (this.accounts.length > 0) {
-        Stack() {
-          Text('+')
-            .fontSize(28)
-            .fontColor(Color.White)
-            .fontWeight(FontWeight.Bold)
+        Row({ space: 8 }) {
+          Image($r('app.media.ic_expense'))
+            .width(22)
+            .height(22)
+            .fillColor(Color.White)
+          Divider()
+            .vertical(true)
+            .color('#66FFFFFF')
+            .height(22)
+          Image($r('app.media.ic_income'))
+            .width(22)
+            .height(22)
+            .fillColor(Color.White)
         }
-        .width(56)
-        .height(56)
-        .borderRadius(28)
+        .width(96)
+        .height(52)
+        .borderRadius(26)
+        .padding({ left: 16, right: 16 })
         .backgroundColor($r('app.color.primaryColor'))
         .shadow({ radius: 8, color: '#40000000', offsetY: 4 })
-        .position({ x: '76%', y: '78%' })
+        .position({ x: '70%', y: '78%' })
+        .alignItems(VerticalAlign.Center)
         .onClick(() => {
-          this.navigateToExpenseEdit(-1, this.selectedAccountId);
+          this.showCreateMenu();
         })
-        .gesture(
-          LongPressGesture().onAction(() => {
-            this.showCreateMenu();
-          })
-        )
       }
     }
     .width('100%')
@@ -356,12 +373,270 @@ struct Index {
 
   @Builder
   templatesTab() {
-    Column() {
-      this.headerBar('模板')
-      this.templateEmpty()
+    Stack() {
+      Column() {
+        this.headerBar('模板')
+        if (this.templates.length === 0) {
+          EmptyState({
+            iconResource: $r('app.media.ic_empty_template'),
+            title: '暂无模板',
+            subtitle: '常用交易可以保存为模板，方便重复记账',
+            actionText: '新建模板',
+            onAction: () => {
+              this.createTemplate();
+            }
+          })
+          .width('100%')
+          .layoutWeight(1)
+        } else {
+          List({ space: 0 }) {
+            ForEach(this.templates, (tpl: Template) => {
+              ListItem() {
+                Row() {
+                  Column() {
+                    Text(tpl.title)
+                      .fontSize(15)
+                      .fontWeight(FontWeight.Medium)
+                      .fontColor($r('app.color.textPrimary'))
+                      .maxLines(1)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    Text(`${tpl.categoryPath || '未分类'} · ${this.templateAmount(tpl)}${tpl.recurrence > 0 ? ' · ' + this.recurrenceLabel(tpl.recurrence) : ''}`)
+                      .fontSize(12)
+                      .fontColor($r('app.color.textSecondary'))
+                      .maxLines(1)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  }
+                  .layoutWeight(1)
+                  .alignItems(HorizontalAlign.Start)
+                  .margin({ left: 12 })
+
+                  // 生成交易（按周期计划生成固定收支）
+                  if (tpl.recurrence > 0) {
+                    Button('生成')
+                      .height(28)
+                      .fontSize(12)
+                      .backgroundColor($r('app.color.primaryColor'))
+                      .fontColor(Color.White)
+                      .margin({ right: 8 })
+                      .onClick(() => {
+                        this.generatePlan(tpl);
+                      })
+                  }
+
+                  Button('用于交易')
+                    .height(28)
+                    .fontSize(12)
+                    .backgroundColor($r('app.color.primaryContainer'))
+                    .fontColor($r('app.color.primaryColor'))
+                    .onClick(() => {
+                      this.useTemplate(tpl);
+                    })
+
+                  // 设置周期（长按模板行弹出）
+                  Image($r('sys.media.ohos_ic_public_edit'))
+                    .width(16)
+                    .height(16)
+                    .opacity(0.6)
+                    .margin({ left: 8 })
+                    .onClick(() => {
+                      this.setRecurrence(tpl);
+                    })
+
+                  Image($r('sys.media.ohos_ic_public_close'))
+                    .width(16)
+                    .height(16)
+                    .opacity(0.6)
+                    .margin({ left: 8 })
+                    .onClick(() => {
+                      this.deleteTemplate(tpl);
+                    })
+                }
+                .width('100%')
+                .height(56)
+                .padding({ left: 16, right: 16 })
+                .backgroundColor($r('app.color.cardBackgroundColor'))
+                .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
+              }
+            }, (tpl: Template) => `tpl_${tpl.id}_${tpl.recurrence}_${tpl.advanceDays}_${tpl.autoExecute}`)
+          }
+          .layoutWeight(1)
+          .width('100%')
+        }
+      }
+      .width('100%')
+      .height('100%')
+
+      // 新建模板 FAB
+      Stack() {
+        Text('+')
+          .fontSize(28)
+          .fontColor(Color.White)
+          .fontWeight(FontWeight.Bold)
+      }
+      .width(56)
+      .height(56)
+      .borderRadius(28)
+      .backgroundColor($r('app.color.primaryColor'))
+      .shadow({ radius: 8, color: '#40000000', offsetY: 4 })
+      .position({ x: '76%', y: '78%' })
+      .onClick(() => {
+        this.createTemplate();
+      })
     }
     .width('100%')
     .height('100%')
+  }
+
+  private templateAmount(tpl: Template): string {
+    const symbol = currencyByCode(tpl.currency).symbol;
+    const prefix = tpl.isIncome ? '+' : '';
+    return `${prefix}${symbol}${formatMoney(Math.abs(tpl.amount), currencyByCode(tpl.currency).fractionDigits)}`;
+  }
+
+  /**
+   * 新建模板：用当前账户创建一个简单模板
+   */
+  private async createTemplate(): Promise<void> {
+    const acc = this.currentAccount() || (this.accounts.length > 0 ? this.accounts[0] : null);
+    if (!acc) {
+      promptAction.showToast({ message: $r('app.string.toast_create_account_first') });
+      return;
+    }
+    const tpl = new Template();
+    tpl.title = '新模板';
+    tpl.accountId = acc.id;
+    tpl.currency = acc.currency;
+    await this.repository.insertTemplate(tpl);
+    await this.loadData();
+  }
+
+  /**
+   * 用于交易：模板实例化为交易并进入编辑
+   */
+  private async useTemplate(tpl: Template): Promise<void> {
+    const txId = await this.repository.instantiateTemplate(tpl);
+    if (txId > 0) {
+      promptAction.showToast({ message: $r('app.string.toast_tx_generated') });
+      this.navigateToExpenseEdit(txId, tpl.accountId);
+    }
+  }
+
+  private async deleteTemplate(tpl: Template): Promise<void> {
+    await this.repository.deleteTemplate(tpl.id);
+    await this.loadData();
+  }
+
+  private recurrenceLabel(recurrence: number): string {
+    const labels: string[] = ['不重复', '仅一次', '每天', '每周', '每月', '每月最后一天', '每年'];
+    return recurrence >= 0 && recurrence < labels.length ? labels[recurrence] : '';
+  }
+
+  /**
+   * 生成计划交易（每月固定收支）
+   */
+  private async generatePlan(tpl: Template): Promise<void> {
+    const txId = await this.repository.generatePlanTransaction(tpl);
+    if (txId > 0) {
+      promptAction.showToast({ message: `已按「${this.recurrenceLabel(tpl.recurrence)}」生成交易` });
+    } else {
+      promptAction.showToast({ message: $r('app.string.toast_no_plan_due') });
+    }
+    await this.loadData();
+  }
+
+  /**
+   * 设置模板周期（弹出选择）
+   */
+  private setRecurrence(tpl: Template): void {
+    const options: ActionSheetOptions = {
+      title: '设置周期',
+      message: `${tpl.title} 的重复规则`,
+      confirm: {
+        value: '取消',
+        action: () => {
+        }
+      },
+      sheets: [
+        { title: '不重复', action: () => this.applyRecurrence(tpl, 0) },
+        { title: '仅一次', action: () => this.applyRecurrence(tpl, 1) },
+        { title: '每天', action: () => this.applyRecurrence(tpl, 2) },
+        { title: '每周', action: () => this.applyRecurrence(tpl, 3) },
+        { title: '每月', action: () => this.applyRecurrence(tpl, 4) },
+        { title: '每月最后一天', action: () => this.applyRecurrence(tpl, 5) },
+        { title: '每年', action: () => this.applyRecurrence(tpl, 6) },
+        { title: '设置下次执行日期', action: () => this.pickPlanStartDate(tpl) },
+        { title: tpl.autoExecute ? '自动执行：开（点击关闭）' : '自动执行：关（点击开启）', action: () => this.toggleAutoExecute(tpl) },
+        { title: `提前执行：${tpl.advanceDays} 天`, action: () => this.setAdvanceDays(tpl) }
+      ]
+    };
+    this.getUIContext().showActionSheet(options);
+  }
+
+  /**
+   * 切换计划自动执行
+   */
+  private async toggleAutoExecute(tpl: Template): Promise<void> {
+    tpl.autoExecute = !tpl.autoExecute;
+    await this.repository.updateTemplate(tpl);
+    await this.loadData();
+  }
+
+  /**
+   * 设置提前执行天数（0-30）
+   */
+  private setAdvanceDays(tpl: Template): void {
+    const options: ActionSheetOptions = {
+      title: '提前执行天数',
+      message: `当前：${tpl.advanceDays} 天（0-30）`,
+      confirm: {
+        value: '取消',
+        action: () => {
+        }
+      },
+      sheets: [
+        { title: '0 天（不提前）', action: () => this.applyAdvanceDays(tpl, 0) },
+        { title: '3 天', action: () => this.applyAdvanceDays(tpl, 3) },
+        { title: '7 天', action: () => this.applyAdvanceDays(tpl, 7) },
+        { title: '14 天', action: () => this.applyAdvanceDays(tpl, 14) },
+        { title: '30 天', action: () => this.applyAdvanceDays(tpl, 30) }
+      ]
+    };
+    this.getUIContext().showActionSheet(options);
+  }
+
+  private async applyAdvanceDays(tpl: Template, days: number): Promise<void> {
+    tpl.advanceDays = days;
+    await this.repository.updateTemplate(tpl);
+    await this.loadData();
+  }
+
+  /**
+   * 选择计划下次执行日期（对齐安卓 DateButton）
+   */
+  private pickPlanStartDate(tpl: Template): void {
+    const current = tpl.dtStart > 0 ? new Date(tpl.dtStart * 1000) : new Date();
+    const pickerOptions: DatePickerDialogOptions = {
+      start: new Date(current.getFullYear() - 10, 0, 1),
+      end: new Date(current.getFullYear() + 10, 11, 31),
+      selected: current,
+      onDateAccept: (value: Date) => {
+        tpl.dtStart = Math.floor(value.getTime() / 1000 / 86400) * 86400;
+        if (tpl.recurrence <= 0) {
+          tpl.recurrence = 4; // 默认每月
+        }
+        this.applyRecurrence(tpl, tpl.recurrence);
+      }
+    };
+    this.getUIContext().showDatePickerDialog(pickerOptions);
+  }
+
+  private async applyRecurrence(tpl: Template, recurrence: number): Promise<void> {
+    tpl.recurrence = recurrence;
+    if (tpl.dtStart <= 0) {
+      tpl.dtStart = Math.floor(Date.now() / 1000);
+    }
+    await this.repository.updateTemplate(tpl);
+    await this.loadData();
   }
 
   @Builder
@@ -410,9 +685,15 @@ struct Index {
   @Builder
   transactionHeader() {
     Row() {
-      // 账户名 + 当前余额（对齐安卓 Current balance）
+      // 账户名 + 当前余额（对齐安卓 Current balance + 颜色圆点）
       Column() {
         Row() {
+          // 账户颜色圆点（对齐安卓青色圆点）
+          Circle()
+            .width(12)
+            .height(12)
+            .fill(this.accountColor())
+            .margin({ right: 6 })
           Text(this.currentAccount()?.label || '交易')
             .fontSize(17)
             .fontWeight(FontWeight.Medium)
@@ -424,7 +705,7 @@ struct Index {
             .opacity(0.4)
             .margin({ left: 4 })
         }
-        Text(this.balanceText())
+        Text(`当前余额 ${this.balanceText()}`)
           .fontSize(13)
           .fontColor(this.balanceColor())
       }
@@ -472,7 +753,7 @@ struct Index {
   @Builder
   emptyState() {
     EmptyState({
-      icon: '🏦',
+      iconResource: $r('app.media.ic_empty_account'),
       title: '没有账户。',
       subtitle: '创建第一个账户开始记账',
       actionText: '新建账户',
@@ -503,9 +784,9 @@ struct Index {
       .width('100%')
 
       Row() {
-        this.summaryItem('⊕', '收入', this.sumIncome(), $r('app.color.colorIncome'))
-        this.summaryItem('⊖', '支出', this.sumExpense(), $r('app.color.colorExpense'))
-        this.summaryItem('⇄', '转帐', this.sumTransfer(), $r('app.color.colorTransfer'))
+        this.summaryItem($r('app.media.ic_income'), '收入', this.sumIncome(), $r('app.color.colorIncome'))
+        this.summaryItem($r('app.media.ic_expense'), '支出', this.sumExpense(), $r('app.color.colorExpense'))
+        this.summaryItem($r('app.media.ic_transfer'), '转帐', this.sumTransfer(), $r('app.color.colorTransfer'))
       }
       .width('100%')
       .margin({ top: 8 })
@@ -516,12 +797,18 @@ struct Index {
   }
 
   @Builder
-  summaryItem(icon: string, label: string, amount: number, color: ResourceColor) {
+  summaryItem(icon: Resource, label: string, amount: number, color: ResourceColor) {
     Column({ space: 2 }) {
-      Text(`${icon} ${this.symbol()}${formatMoney(amount, this.fractionDigits())}`)
-        .fontSize(14)
-        .fontColor(color)
-        .fontWeight(FontWeight.Medium)
+      Row({ space: 4 }) {
+        Image(icon)
+          .width(14)
+          .height(14)
+          .fillColor(color)
+        Text(`${this.symbol()}${formatMoney(amount, this.fractionDigits())}`)
+          .fontSize(14)
+          .fontColor(color)
+          .fontWeight(FontWeight.Medium)
+      }
       Text(label)
         .fontSize(11)
         .fontColor($r('app.color.textSecondary'))
@@ -533,7 +820,7 @@ struct Index {
   @Builder
   templateEmpty() {
     EmptyState({
-      icon: '📋',
+      iconResource: $r('app.media.ic_empty_template'),
       title: '暂无模板',
       subtitle: '常用交易可以保存为模板'
     })
@@ -625,6 +912,15 @@ struct Index {
     return acc ? acc.currentBalance : 0;
   }
 
+  private accountColor(): ResourceColor {
+    const acc = this.currentAccount();
+    if (acc && acc.color) {
+      const rgb = acc.color & 0xFFFFFF;
+      return '#' + rgb.toString(16).padStart(6, '0').toUpperCase();
+    }
+    return $r('app.color.defaultAccountColor');
+  }
+
   private sumIncome(): number {
     const acc = this.currentAccount();
     return acc ? acc.sumIncome : 0;
@@ -688,5 +984,19 @@ struct Index {
     }
     await this.repository.setAccountExcludeFromTotals(id, !acc.excludeFromTotals);
     await this.loadData();
+  }
+
+  /**
+   * 账户拖拽排序（对齐安卓 ItemTouchHelper）
+   * 重排 accounts 数组，触发 UI 刷新
+   */
+  private reorderAccounts(from: number, to: number): void {
+    if (from < 0 || to < 0 || from >= this.accounts.length || to >= this.accounts.length || from === to) {
+      return;
+    }
+    const item = this.accounts.splice(from, 1)[0];
+    this.accounts.splice(to, 0, item);
+    // 触发状态刷新
+    this.accounts = [...this.accounts];
   }
 }

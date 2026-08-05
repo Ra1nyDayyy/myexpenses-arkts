@@ -73,15 +73,15 @@ export struct AccountRow {
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
             if (this.account.sealed) {
-              Text('🔒')
-                .fontSize(12)
+              Image($r('app.media.ic_locked'))
+                .width(14)
+                .height(14)
                 .margin({ left: 4 })
             }
             if (this.account.excludeFromTotals) {
-              Text('∑')
-                .fontSize(12)
-                .fontColor($r('app.color.textSecondary'))
-                .decoration({ type: TextDecorationType.LineThrough })
+              Image($r('app.media.ic_exclude'))
+                .width(14)
+                .height(14)
                 .margin({ left: 4 })
             }
           }
