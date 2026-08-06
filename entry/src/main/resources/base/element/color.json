@@ -151,6 +151,14 @@
     {
       "name": "defaultTagColor",
       "value": "#0050A7"
+    },
+    {
+      "name": "floatTabBarBackground",
+      "value": "#F2F2F7"
+    },
+    {
+      "name": "floatTabItemActive",
+      "value": "#1A0050A7"
     }
   ]
 }

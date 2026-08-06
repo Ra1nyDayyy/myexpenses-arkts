@@ -26,6 +26,8 @@ export struct AccountListPage {
   };
   onToggleExclude: (id: number) => void = () => {
   };
+  onSetFlag: (id: number) => void = () => {
+  };
   onCreateAccount: () => void = () => {
   };
   onReorder: (from: number, to: number) => void = () => {
@@ -46,6 +48,8 @@ export struct AccountListPage {
       let key = '';
       switch (this.grouping) {
         case AccountGrouping.TYPE:
+        case AccountGrouping.NONE:
+          // 账户列表默认按类型分组（对齐安卓 AccountGrouping.TYPE）
           key = Account.typeName(acc.type);
           break;
         case AccountGrouping.CURRENCY:
@@ -105,8 +109,8 @@ export struct AccountListPage {
         })
         .width('100%')
         .layoutWeight(1)
-      } else if (this.grouping === AccountGrouping.NONE && this.groupSingle()) {
-        // 扁平 List：支持拖拽排序（对齐安卓 ItemTouchHelper）
+      } else if (this.groupSingle()) {
+        // 单分组时用扁平 List（支持拖拽排序）
         List({ space: 0 }) {
           ForEach(this.accounts, (acc: Account) => {
             ListItem() {
@@ -134,10 +138,13 @@ export struct AccountListPage {
                 },
                 onToggleExclude: (id: number) => {
                   this.onToggleExclude(id);
+                },
+                onSetFlag: (id: number) => {
+                  this.onSetFlag(id);
                 }
               })
             }
-          }, (acc: Account) => `account_${acc.id}`)
+          }, (acc: Account) => `account_${acc.id}_${acc.sealed}_${acc.excludeFromTotals}_${acc.flagId}`)
         }
         .layoutWeight(1)
         .width('100%')
@@ -193,7 +200,7 @@ export struct AccountListPage {
                       this.onToggleExclude(id);
                     }
                   })
-                }, (acc: Account) => `account_${acc.id}`)
+                }, (acc: Account) => `account_${acc.id}_${acc.sealed}_${acc.excludeFromTotals}_${acc.flagId}`)
 
                 Divider()
                   .color($r('app.color.dividerColor'))

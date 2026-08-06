@@ -25,6 +25,8 @@ export struct AccountRow {
   };
   onToggleExclude: (id: number) => void = () => {
   };
+  onSetFlag: (id: number) => void = () => {
+  };
 
   private accountColor(): string {
     return intToColor(this.account.color);
@@ -76,12 +78,14 @@ export struct AccountRow {
               Image($r('app.media.ic_locked'))
                 .width(14)
                 .height(14)
+                .fillColor($r('app.color.textSecondary'))
                 .margin({ left: 4 })
             }
             if (this.account.excludeFromTotals) {
               Image($r('app.media.ic_exclude'))
                 .width(14)
                 .height(14)
+                .fillColor($r('app.color.textSecondary'))
                 .margin({ left: 4 })
             }
           }
@@ -154,6 +158,12 @@ export struct AccountRow {
               .onClick(() => {
                 this.onEdit(this.account.id);
               })
+            Text('标记')
+              .fontSize(13)
+              .fontColor($r('app.color.primaryColor'))
+              .onClick(() => {
+                this.onSetFlag(this.account.id);
+              })
             Text(this.account.excludeFromTotals ? '计入总数' : '不计入总数')
               .fontSize(13)
               .fontColor($r('app.color.primaryColor'))
@@ -165,6 +175,12 @@ export struct AccountRow {
               .fontColor($r('app.color.textTertiary'))
               .onClick(() => {
                 this.onToggleSealed(this.account.id);
+              })
+            Text('删除')
+              .fontSize(13)
+              .fontColor($r('app.color.colorExpense'))
+              .onClick(() => {
+                this.onDelete(this.account.id);
               })
           }
           .width('100%')

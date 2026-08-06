@@ -46,6 +46,8 @@ export class Account {
   parentId: number = -1;
   bankId: number = -1;
   lastUsed: number = 0;
+  flagId: number = 1; // 账户标记 id（对应 account_flags）
+  flagLabel: string = '默认';
   // 汇总字段（查询时填充）
   currentBalance: number = 0;
   sumIncome: number = 0;

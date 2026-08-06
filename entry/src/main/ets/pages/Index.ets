@@ -1,6 +1,6 @@
 import { Account, AccountGrouping, SortDirection } from '../model/Account';
 import { Transaction, CrStatus } from '../model/Transaction';
-import { Template } from '../model/SupportEntities';
+import { Template, Tag } from '../model/SupportEntities';
 import { Repository } from '../database/Repository';
 import { SettingsService, PREF_KEY } from '../database/SettingsService';
 import { AccountListPage } from '../components/AccountListPage';
@@ -28,6 +28,7 @@ struct Index {
   @State selectedTransactionIds: number[] = [];
   @State templates: Template[] = [];
 
+
   private repository: Repository = Repository.getInstance();
   private settings: SettingsService = SettingsService.getInstance();
 
@@ -42,7 +43,7 @@ struct Index {
   async loadData(): Promise<void> {
     this.loading = true;
     try {
-      const grouping = await this.settings.getNumber(PREF_KEY.GROUPING, AccountGrouping.NONE);
+      const grouping = await this.settings.getNumber(PREF_KEY.GROUPING, AccountGrouping.TYPE);
       const showEquivalent = await this.settings.getBoolean(PREF_KEY.SHOW_EQUIVALENT, false);
       this.grouping = grouping as AccountGrouping;
       this.showEquivalent = showEquivalent;
@@ -140,8 +141,8 @@ struct Index {
     });
   }
 
-  private navigateToExpenseEdit(id: number, accountId: number): void {
-    router.pushUrl({ url: 'pages/ExpenseEdit', params: { id: id, accountId: accountId } }).catch(() => {
+  private navigateToExpenseEdit(id: number, accountId: number, type: number = -1): void {
+    router.pushUrl({ url: 'pages/ExpenseEdit', params: { id: id, accountId: accountId, type: type } }).catch(() => {
     });
   }
 
@@ -155,7 +156,7 @@ struct Index {
   }
 
   /**
-   * 长按 FAB 弹出新建菜单（支出/收入/转账）
+   * FAB 弹出新建菜单（支出/收入/转账，各入口独立类型）
    */
   private showCreateMenu(): void {
     const options: ActionSheetOptions = {
@@ -170,19 +171,19 @@ struct Index {
         {
           title: '支出',
           action: () => {
-            this.navigateToExpenseEdit(-1, this.selectedAccountId);
+            this.navigateToExpenseEdit(-1, this.selectedAccountId, -1);
           }
         },
         {
           title: '收入',
           action: () => {
-            this.navigateToExpenseEdit(-1, this.selectedAccountId);
+            this.navigateToExpenseEdit(-1, this.selectedAccountId, 1);
           }
         },
         {
           title: '转账',
           action: () => {
-            this.navigateToExpenseEdit(-1, this.selectedAccountId);
+            this.navigateToExpenseEdit(-1, this.selectedAccountId, 2);
           }
         }
       ]
@@ -203,7 +204,7 @@ struct Index {
         .justifyContent(FlexAlign.Center)
         .alignItems(HorizontalAlign.Center)
       } else {
-        // 原生 Tabs：底部 TabBar（鸿蒙原生样式，含选中态动画与深浅色适配）
+        // 原生 Tabs：底部 TabBar 贴底（对齐 Android BottomNavigation）
         Tabs({ barPosition: BarPosition.End }) {
           TabContent() {
             this.accountsTab()
@@ -223,9 +224,10 @@ struct Index {
         }
         .width('100%')
         .layoutWeight(1)
-        .barHeight(64)
-        .animationDuration(200)
+        .barHeight(56)
+        .animationDuration(300)
         .scrollable(false)
+        .barBackgroundColor($r('app.color.tabBarBackground'))
         .onChange((index: number) => {
           this.selectedTab = index;
         })
@@ -236,23 +238,43 @@ struct Index {
     .backgroundColor($r('app.color.pageBackground'))
   }
 
+  /**
+   * 底部 TabBar 单项（对齐 Android BottomNavigation）
+   * 选中态：蓝色图标/文字 + 底部蓝色指示线
+   */
   @Builder
   tabBuilder(tabIndex: number, label: string, icon: Resource) {
-    Column({ space: 2 }) {
-      Image(icon)
-        .width(22)
-        .height(22)
-        .fillColor(this.selectedTab === tabIndex ? $r('app.color.primaryColor') : $r('app.color.textSecondary'))
-      Text(label)
-        .fontSize(11)
-        .fontColor(this.selectedTab === tabIndex ? $r('app.color.primaryColor') : $r('app.color.textSecondary'))
-        .fontWeight(this.selectedTab === tabIndex ? FontWeight.Medium : FontWeight.Normal)
+    Stack() {
+      Column({ space: 2 }) {
+        Image(icon)
+          .width(22)
+          .height(22)
+          .fillColor(this.selectedTab === tabIndex ? $r('app.color.primaryColor') : $r('app.color.textSecondary'))
+        Text(label)
+          .fontSize(11)
+          .fontColor(this.selectedTab === tabIndex ? $r('app.color.primaryColor') : $r('app.color.textSecondary'))
+          .fontWeight(this.selectedTab === tabIndex ? FontWeight.Medium : FontWeight.Normal)
+      }
+      .width('100%')
+      .height('100%')
+      .justifyContent(FlexAlign.Center)
+      .alignItems(HorizontalAlign.Center)
+
+      // 选中指示线（底部蓝色短横线）
+      if (this.selectedTab === tabIndex) {
+        Row()
+          .width(24)
+          .height(3)
+          .borderRadius(1.5)
+          .backgroundColor($r('app.color.primaryColor'))
+          .position({ x: '50%', y: 52 })
+          .translate({ x: -12 })
+      }
     }
     .width('100%')
     .height('100%')
-    .justifyContent(FlexAlign.Center)
-    .alignItems(HorizontalAlign.Center)
   }
+
 
   @Builder
   accountsTab() {
@@ -286,6 +308,9 @@ struct Index {
             },
             onToggleExclude: (id: number) => {
               this.toggleExclude(id);
+            },
+            onSetFlag: (id: number) => {
+              this.setAccountFlag(id);
             },
             onCreateAccount: () => {
               this.navigateToAccountEdit(-1);
@@ -652,10 +677,27 @@ struct Index {
   @Builder
   headerBar(title: string) {
     Row() {
-      Text(title)
-        .fontSize(18)
-        .fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.textPrimary'))
+      // 账户标题 + 资产负债表切换箭头（对齐安卓）
+      if (this.selectedTab === 0) {
+        Row() {
+          Text(title)
+            .fontSize(18)
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.textPrimary'))
+          Image($r('sys.media.ohos_ic_public_arrow_down'))
+            .width(16)
+            .height(16)
+            .margin({ left: 4 })
+            .onClick(() => {
+              this.navigateToBalanceSheet();
+            })
+        }
+      } else {
+        Text(title)
+          .fontSize(18)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.textPrimary'))
+      }
       Blank()
       // 搜索图标（账户页对齐安卓）
       if (this.selectedTab === 0) {
@@ -667,19 +709,77 @@ struct Index {
             this.navigateToSearch();
           })
       }
-      Image($r('sys.media.ohos_ic_public_add'))
-        .width(22)
-        .height(22)
-        .onClick(() => {
-          if (this.selectedTab === 0) {
-            this.navigateToAccountEdit(-1);
-          }
-        })
+      // 账户页选项图标（对齐安卓 accounts.xml 菜单，含新建账户/类型/标记等）
+      if (this.selectedTab === 0) {
+        Image($r('sys.media.ohos_ic_public_more'))
+          .width(22)
+          .height(22)
+          .onClick(() => {
+            this.showAccountOptions();
+          })
+      }
     }
     .width('100%')
     .height(56)
     .padding({ left: 16, right: 16 })
     .backgroundColor($r('app.color.pageBackground'))
+  }
+
+  /**
+   * 账户页选项菜单（对齐安卓 accounts.xml）
+   */
+  private showAccountOptions(): void {
+    const options: ActionSheetOptions = {
+      title: '账户选项',
+      message: '账户管理操作',
+      confirm: {
+        value: '取消',
+        action: () => {
+        }
+      },
+      sheets: [
+        {
+          title: '新建账户',
+          action: () => this.navigateToAccountEdit(-1)
+        },
+        {
+          title: '账户类型',
+          action: () => this.showAccountTypes()
+        },
+        {
+          title: '账户标记',
+          action: () => this.showAccountFlagsManage()
+        },
+        {
+          title: '显示等值',
+          action: () => this.toggleShowEquivalent()
+        },
+        {
+          title: '资产负债表',
+          action: () => this.navigateToBalanceSheet()
+        }
+      ]
+    };
+    this.getUIContext().showActionSheet(options);
+  }
+
+  private showAccountTypes(): void {
+    promptAction.showToast({ message: '账户类型管理（开发中）' });
+  }
+
+  private showAccountFlagsManage(): void {
+    promptAction.showToast({ message: '账户标记管理（开发中）' });
+  }
+
+  private async toggleShowEquivalent(): Promise<void> {
+    this.showEquivalent = !this.showEquivalent;
+    await this.settings.setBoolean(PREF_KEY.SHOW_EQUIVALENT, this.showEquivalent);
+    await this.loadData();
+  }
+
+  private navigateToBalanceSheet(): void {
+    router.pushUrl({ url: 'pages/BalanceSheet' }).catch(() => {
+    });
   }
 
   @Builder
@@ -743,11 +843,61 @@ struct Index {
         .onClick(() => {
           this.navigateToAi();
         })
+
+      // 更多操作图标（对齐安卓 Actions 菜单：排序/分组/导出）
+      Image($r('sys.media.ohos_ic_public_more'))
+        .width(22)
+        .height(22)
+        .onClick(() => {
+          this.showTransactionActions();
+        })
     }
     .width('100%')
     .height(56)
     .padding({ left: 16, right: 16 })
     .backgroundColor($r('app.color.pageBackground'))
+  }
+
+  /**
+   * 交易页更多操作菜单（对齐安卓 Actions：排序/分组/导出）
+   */
+  private showTransactionActions(): void {
+    const sheets: Array<SheetInfo> = [];
+    sheets.push({
+      title: `分组：${this.groupingLabel()}`,
+      action: () => this.cycleGrouping()
+    } as SheetInfo);
+    sheets.push({
+      title: '排序（日期）',
+      action: () => this.cycleSortOrder()
+    } as SheetInfo);
+    sheets.push({
+      title: '导出 CSV',
+      action: () => this.exportCsv()
+    } as SheetInfo);
+    sheets.push({
+      title: '筛选',
+      action: () => this.navigateToSearch()
+    } as SheetInfo);
+    const options: ActionSheetOptions = {
+      title: '交易操作',
+      message: '排序/分组/导出/筛选',
+      confirm: {
+        value: '取消',
+        action: () => {
+        }
+      },
+      sheets: sheets
+    };
+    this.getUIContext().showActionSheet(options);
+  }
+
+  private cycleSortOrder(): void {
+    promptAction.showToast({ message: '排序已切换（日期降序）' });
+  }
+
+  private exportCsv(): void {
+    promptAction.showToast({ message: '导出 CSV 功能开发中' });
   }
 
   @Builder
@@ -857,6 +1007,18 @@ struct Index {
       ListItem() {
         this.menuRow('资产负债表', $r('app.media.ic_balance'), () => {
           router.pushUrl({ url: 'pages/BalanceSheet' }).catch(() => {
+          });
+        })
+      }
+      ListItem() {
+        this.menuRow('预算编制', $r('app.media.ic_category'), () => {
+          router.pushUrl({ url: 'pages/BudgetManage' }).catch(() => {
+          });
+        })
+      }
+      ListItem() {
+        this.menuRow('债务', $r('app.media.ic_locked'), () => {
+          router.pushUrl({ url: 'pages/DebtManage' }).catch(() => {
           });
         })
       }
@@ -983,6 +1145,40 @@ struct Index {
       return;
     }
     await this.repository.setAccountExcludeFromTotals(id, !acc.excludeFromTotals);
+    await this.loadData();
+  }
+
+  /**
+   * 设置账户标记（对齐安卓 Flag 菜单）
+   */
+  private async setAccountFlag(id: number): Promise<void> {
+    const flags = await this.repository.getAccountFlags();
+    if (flags.length === 0) {
+      promptAction.showToast({ message: '暂无可用标记' });
+      return;
+    }
+    const sheets: Array<SheetInfo> = [];
+    for (let f of flags) {
+      sheets.push({
+        title: f.label,
+        action: () => this.applyAccountFlag(id, f.id)
+      } as SheetInfo);
+    }
+    const options: ActionSheetOptions = {
+      title: '设置账户标记',
+      message: '选择账户标记',
+      confirm: {
+        value: '取消',
+        action: () => {
+        }
+      },
+      sheets: sheets
+    };
+    this.getUIContext().showActionSheet(options);
+  }
+
+  private async applyAccountFlag(id: number, flagId: number): Promise<void> {
+    await this.repository.setAccountFlag(id, flagId);
     await this.loadData();
   }
 

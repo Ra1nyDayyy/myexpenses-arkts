@@ -75,4 +75,6 @@ export class PREF_KEY {
   static readonly USE_CUSTOM_CATEGORY_COLORS: string = 'use_custom_category_colors';
   static readonly AI_ANALYSIS_RESULT: string = 'ai_analysis_result';
   static readonly AI_ANALYSIS_TIME: string = 'ai_analysis_time';
+  static readonly THEME: string = 'theme'; // 0 跟随系统 1 浅色 2 深色
+  static readonly LANGUAGE: string = 'language';
 }

@@ -7,9 +7,12 @@ export struct PageHeader {
   @Prop title: string = '';
   @Prop showBack: boolean = true;
   @Prop rightText: string = '';
+  @Prop showMore: boolean = false;
   onBack: () => void = () => {
   };
   onRight: () => void = () => {
+  };
+  onMore: () => void = () => {
   };
 
   build() {
@@ -44,6 +47,17 @@ export struct PageHeader {
           .fontWeight(FontWeight.Medium)
           .onClick(() => {
             this.onRight();
+          })
+      }
+
+      // 更多选项图标
+      if (this.showMore) {
+        Image($r('sys.media.ohos_ic_public_more'))
+          .width(22)
+          .height(22)
+          .margin({ left: 16 })
+          .onClick(() => {
+            this.onMore();
           })
       }
     }

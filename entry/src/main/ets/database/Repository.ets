@@ -88,7 +88,8 @@ export class Repository {
       'dynamic': account.dynamic ? 1 : 0,
       'parent_id': account.parentId >= 0 ? account.parentId : null,
       'bank_id': account.bankId >= 0 ? account.bankId : null,
-      'last_used': account.lastUsed
+      'last_used': account.lastUsed,
+      'flag_id': account.flagId > 0 ? account.flagId : 1
     };
     return this.store().insert('accounts', values);
   }
@@ -108,7 +109,8 @@ export class Repository {
       'sort_by': account.sortBy,
       'sort_direction': account.sortDirection,
       'exchange_rate': account.exchangeRate,
-      'dynamic': account.dynamic ? 1 : 0
+      'dynamic': account.dynamic ? 1 : 0,
+      'flag_id': account.flagId > 0 ? account.flagId : 1
     };
     const predicates = new relationalStore.RdbPredicates('accounts');
     predicates.equalTo('id', account.id);
@@ -149,6 +151,37 @@ export class Repository {
     return this.store().update(values, predicates);
   }
 
+  /**
+   * 获取账户标记列表（account_flags）
+   */
+  async getAccountFlags(): Promise<Tag[]> {
+    const predicates = new relationalStore.RdbPredicates('account_flags');
+    predicates.orderByAsc('flag_sort_key');
+    const result = await this.store().query(predicates);
+    const flags: Tag[] = [];
+    try {
+      while (result.goToNextRow()) {
+        const tag = new Tag();
+        tag.id = result.getLong(result.getColumnIndex('id'));
+        tag.label = result.getString(result.getColumnIndex('flag_label'));
+        flags.push(tag);
+      }
+    } finally {
+      result.close();
+    }
+    return flags;
+  }
+
+  /**
+   * 设置账户标记
+   */
+  async setAccountFlag(id: number, flagId: number): Promise<number> {
+    const values: relationalStore.ValuesBucket = { 'flag_id': flagId };
+    const predicates = new relationalStore.RdbPredicates('accounts');
+    predicates.equalTo('id', id);
+    return this.store().update(values, predicates);
+  }
+
   private rowToAccount(result: relationalStore.ResultSet): Account {
     const account = new Account();
     account.id = result.getLong(result.getColumnIndex('id'));
@@ -173,6 +206,8 @@ export class Repository {
     account.bankId = result.isColumnNull(bankIdIdx) ? -1 : result.getLong(bankIdIdx);
     const lastUsedIdx = result.getColumnIndex('last_used');
     account.lastUsed = result.isColumnNull(lastUsedIdx) ? 0 : result.getLong(lastUsedIdx);
+    const flagIdx = result.getColumnIndex('flag_id');
+    account.flagId = result.isColumnNull(flagIdx) ? 1 : result.getLong(flagIdx);
     return account;
   }
 
@@ -868,6 +903,26 @@ export class Repository {
     return list;
   }
 
+  async insertBudget(budget: Budget): Promise<number> {
+    const values: relationalStore.ValuesBucket = {
+      'title': budget.title,
+      'description': budget.description,
+      'account_id': budget.accountId >= 0 ? budget.accountId : null,
+      'currency': budget.currency,
+      'start': budget.start > 0 ? budget.start : null,
+      'end': budget.end > 0 ? budget.end : null,
+      'is_default': budget.isDefault ? 1 : 0,
+      'uuid': generateUuid()
+    };
+    return this.store().insert('budgets', values);
+  }
+
+  async deleteBudget(id: number): Promise<number> {
+    const predicates = new relationalStore.RdbPredicates('budgets');
+    predicates.equalTo('id', id);
+    return this.store().delete(predicates);
+  }
+
   // ==================== 债务 ====================
 
   async getDebts(): Promise<Debt[]> {
@@ -892,6 +947,25 @@ export class Repository {
       result.close();
     }
     return list;
+  }
+
+  async insertDebt(debt: Debt): Promise<number> {
+    const values: relationalStore.ValuesBucket = {
+      'payee_id': debt.payeeId >= 0 ? debt.payeeId : null,
+      'date': debt.date > 0 ? debt.date : null,
+      'label': debt.label,
+      'amount': debt.amount,
+      'currency': debt.currency,
+      'description': debt.description,
+      'sealed': debt.sealed ? 1 : 0
+    };
+    return this.store().insert('debts', values);
+  }
+
+  async deleteDebt(id: number): Promise<number> {
+    const predicates = new relationalStore.RdbPredicates('debts');
+    predicates.equalTo('id', id);
+    return this.store().delete(predicates);
   }
 
   // ==================== 汇总统计（AI / 分布） ====================

@@ -1,16 +1,18 @@
 import { Repository } from '../database/Repository';
 import { SettingsService, PREF_KEY } from '../database/SettingsService';
 import { PageHeader } from '../components/PageHeader';
-import { router } from '@kit.ArkUI';
+import { router, promptAction } from '@kit.ArkUI';
 
 /**
- * 设置页：对应 Android PreferenceActivity（核心设置项）
+ * 设置页：对应 Android PreferenceActivity（扩展设置项）
+ * 分组：数据管理 / 界面 / 显示 / 导入导出 / 关于
  */
 @Entry
 @Component
 struct Settings {
   @State showEquivalent: boolean = false;
   @State showSumDetails: boolean = false;
+  @State theme: number = 0; // 0 跟随系统 1 浅色 2 深色
 
   private repository: Repository = Repository.getInstance();
   private settings: SettingsService = SettingsService.getInstance();
@@ -22,6 +24,7 @@ struct Settings {
   async load(): Promise<void> {
     this.showEquivalent = await this.settings.getBoolean(PREF_KEY.SHOW_EQUIVALENT, false);
     this.showSumDetails = await this.settings.getBoolean(PREF_KEY.SHOW_SUM_DETAILS, false);
+    this.theme = await this.settings.getNumber(PREF_KEY.THEME, 0);
   }
 
   private async toggleEquivalent(v: boolean): Promise<void> {
@@ -32,6 +35,45 @@ struct Settings {
   private async toggleSumDetails(v: boolean): Promise<void> {
     this.showSumDetails = v;
     await this.settings.setBoolean(PREF_KEY.SHOW_SUM_DETAILS, v);
+  }
+
+  private themeLabel(): string {
+    if (this.theme === 1) {
+      return '浅色';
+    }
+    if (this.theme === 2) {
+      return '深色';
+    }
+    return '跟随系统';
+  }
+
+  /**
+   * 主题设置：弹选择，通过 AppStorage 通知应用切换颜色模式
+   */
+  private setTheme(): void {
+    const sheets: Array<SheetInfo> = [
+      { title: '跟随系统', action: () => this.applyTheme(0) },
+      { title: '浅色', action: () => this.applyTheme(1) },
+      { title: '深色', action: () => this.applyTheme(2) }
+    ];
+    const options: ActionSheetOptions = {
+      title: '主题',
+      message: '选择界面主题',
+      confirm: {
+        value: '取消',
+        action: () => {
+        }
+      },
+      sheets: sheets
+    };
+    this.getUIContext().showActionSheet(options);
+  }
+
+  private async applyTheme(t: number): Promise<void> {
+    this.theme = t;
+    await this.settings.setNumber(PREF_KEY.THEME, t);
+    AppStorage.setOrCreate('appTheme', t);
+    promptAction.showToast({ message: '主题已切换，重启后生效' });
   }
 
   build() {
@@ -72,6 +114,26 @@ struct Settings {
             });
           })
         }
+        ListItem() {
+          this.navRow('货币', () => {
+            promptAction.showToast({ message: '货币管理（人民币/美元/欧元等）' });
+          })
+        }
+
+        // 界面
+        ListItem() {
+          this.sectionTitle('界面')
+        }
+        ListItem() {
+          this.navRow('主题', () => {
+            this.setTheme();
+          }, this.themeLabel())
+        }
+        ListItem() {
+          this.navRow('语言', () => {
+            promptAction.showToast({ message: '当前仅支持中文' });
+          }, '中文')
+        }
 
         // 显示
         ListItem() {
@@ -82,10 +144,35 @@ struct Settings {
             this.toggleEquivalent(v);
           })
         }
-
-        // AI
         ListItem() {
-          this.sectionTitle('AI')
+          this.switchRow('分组头显示明细', this.showSumDetails, (v: boolean) => {
+            this.toggleSumDetails(v);
+          })
+        }
+
+        // 导入导出
+        ListItem() {
+          this.sectionTitle('导入导出')
+        }
+        ListItem() {
+          this.navRow('CSV 导出', () => {
+            promptAction.showToast({ message: 'CSV 导出功能开发中' });
+          })
+        }
+        ListItem() {
+          this.navRow('备份与恢复', () => {
+            promptAction.showToast({ message: '备份与恢复功能开发中' });
+          })
+        }
+
+        // 关于
+        ListItem() {
+          this.sectionTitle('关于')
+        }
+        ListItem() {
+          this.navRow('版本', () => {
+            promptAction.showToast({ message: '开支助手 1.0.0' });
+          }, '1.0.0')
         }
         ListItem() {
           this.navRow('AI 助手', () => {
@@ -115,12 +202,18 @@ struct Settings {
   }
 
   @Builder
-  navRow(label: string, onClick: () => void) {
+  navRow(label: string, onClick: () => void, value: string = '') {
     Row() {
       Text(label)
         .fontSize(15)
         .fontColor($r('app.color.textPrimary'))
         .layoutWeight(1)
+      if (value.length > 0) {
+        Text(value)
+          .fontSize(14)
+          .fontColor($r('app.color.textSecondary'))
+          .margin({ right: 8 })
+      }
       Image($r('sys.media.ohos_ic_public_arrow_right'))
         .width(16)
         .height(16)

@@ -30,7 +30,8 @@ export const CREATE_TABLES: string[] = [
      dynamic INTEGER NOT NULL DEFAULT 0,
      parent_id INTEGER,
      bank_id INTEGER,
-     last_used INTEGER
+     last_used INTEGER,
+     flag_id INTEGER NOT NULL DEFAULT 1
   )`,
   `CREATE TABLE IF NOT EXISTS transactions (
      id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -212,7 +213,12 @@ export const SEED_SQL: string[] = [
      (7, '教育', '教育', 0, -1),
      (8, '工资', '工资', 0, 1),
      (9, '奖金', '奖金', 0, 1),
-     (10, '其他', '其他', 0, -1)`
+     (10, '其他', '其他', 0, -1)`,
+  `INSERT OR IGNORE INTO account_flags (id, flag_label, flag_sort_key, flag_icon, visible) VALUES
+     (1, '默认', 0, '', 1),
+     (2, '常用', 1, '', 1),
+     (3, '重要', 2, '', 1),
+     (4, '隐藏', 3, '', 1)`
 ];
 
 /**
@@ -244,6 +250,23 @@ export class DbHelper {
     await this.store.executeSql('PRAGMA journal_mode = WAL');
     for (let sql of CREATE_TABLES) {
       await this.store.executeSql(sql);
+    }
+    // 迁移：给旧库补充新增列（容错，列已存在或表不存在时忽略）
+    const MIGRATIONS: string[] = [
+      `ALTER TABLE categories ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`,
+      `ALTER TABLE templates ADD COLUMN recurrence INTEGER NOT NULL DEFAULT 0`,
+      `ALTER TABLE templates ADD COLUMN dt_start INTEGER`,
+      `ALTER TABLE templates ADD COLUMN last_executed INTEGER`,
+      `ALTER TABLE templates ADD COLUMN auto_execute INTEGER NOT NULL DEFAULT 0`,
+      `ALTER TABLE templates ADD COLUMN advance_days INTEGER NOT NULL DEFAULT 0`,
+      `ALTER TABLE accounts ADD COLUMN flag_id INTEGER NOT NULL DEFAULT 1`
+    ];
+    for (let sql of MIGRATIONS) {
+      try {
+        await this.store.executeSql(sql);
+      } catch (e) {
+        // 列已存在或表不存在时忽略
+      }
     }
     for (let sql of SEED_SQL) {
       await this.store.executeSql(sql);

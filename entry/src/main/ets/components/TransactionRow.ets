@@ -156,6 +156,13 @@ export struct TransactionRow {
           .fontColor($r('app.color.textSecondary'))
       }
       .alignItems(HorizontalAlign.End)
+
+      // 查看箭头（对齐安卓交易记录查看入口）
+      Image($r('sys.media.ohos_ic_public_arrow_right'))
+        .width(14)
+        .height(14)
+        .opacity(0.35)
+        .margin({ left: 6 })
     }
     .width('100%')
     .height(56)
