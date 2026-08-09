@@ -40,6 +40,11 @@ struct AccountEdit {
     }
   }
 
+  // 从标签管理页返回时刷新标签列表（不重置已填写的表单字段）
+  onPageShow(): void {
+    this.loadTags();
+  }
+
   async loadTags(): Promise<void> {
     this.tags = await this.repository.getTags();
     if (this.accountId > 0) {
@@ -305,13 +310,23 @@ struct AccountEdit {
           .height(48)
           .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
 
-          // 标签（对齐安卓账户标签）
-          if (this.tags.length > 0) {
-            Row() {
-              Text('标签')
-                .fontSize(14)
-                .fontColor($r('app.color.textPrimary'))
-                .width('30%')
+          // 标签（对齐安卓账户标签：该项始终显示；无标签时显示占位，可点击跳转创建）
+          Row() {
+            Text('标签')
+              .fontSize(14)
+              .fontColor($r('app.color.textPrimary'))
+              .width('30%')
+            if (this.tags.length === 0) {
+              Text('暂无标签，点击创建')
+                .fontSize(13)
+                .fontColor($r('app.color.textSecondary'))
+                .layoutWeight(1)
+                .textAlign(TextAlign.End)
+                .onClick(() => {
+                  router.pushUrl({ url: 'pages/TagManage' }).catch(() => {
+                  });
+                })
+            } else {
               Flex({ wrap: FlexWrap.Wrap }) {
                 ForEach(this.tags, (tag: Tag) => {
                   Row() {
@@ -336,12 +351,12 @@ struct AccountEdit {
               }
               .layoutWeight(1)
             }
-            .width('100%')
-            .height(48)
-            .padding({ top: 8, bottom: 8 })
-            .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
-            .alignItems(VerticalAlign.Top)
           }
+          .width('100%')
+          .height(48)
+          .padding({ top: 8, bottom: 8 })
+          .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
+          .alignItems(VerticalAlign.Top)
         }
         .width('100%')
         .padding({ left: 16, right: 16, top: 8 })
