@@ -200,6 +200,15 @@ export struct AccountListPage {
                   Text(this.groupSumLabel(this.groups().get(groupKey)!))
                     .fontSize(13)
                     .fontColor($r('app.color.textSecondary'))
+                  // 分组下账户超过一个时显示箭头（对齐安卓 HeaderV2 的 ChevronRight：group.size >= 2）
+                  if (this.groups().get(groupKey)!.length > 1) {
+                    Image($r('sys.media.ohos_ic_public_arrow_right'))
+                      .width(14)
+                      .height(14)
+                      .objectFit(ImageFit.Contain)
+                      .opacity(0.4)
+                      .margin({ left: 4 })
+                  }
                 }
                 .width('100%')
                 .padding({ left: 16, right: 16, top: 10, bottom: 6 })
