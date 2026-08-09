@@ -208,10 +208,18 @@ struct Index {
   }
 
   /**
-   * 设置账户类型过滤并刷新聚合视图交易
+   * 设置账户类型过滤并刷新交易
+   * 对齐安卓 MyExpensesV2ViewModel.setFilter：过滤激活时滑动栏只显示该类型账户；
+   * 若当前选中账户不在过滤后的账户列表中，自动切回聚合视图
    */
   private setAccountFilter(type: number): void {
     this.activeFilterType = type;
+    // 若当前选中账户不在过滤后的账户列表中（如从某类型账户切换过滤器到另一类型），自动切回聚合视图
+    const inList = this.filteredTabAccounts().some((a: Account) => a.id === this.selectedAccountId);
+    if (!inList && this.selectedAccountId !== 0) {
+      this.selectTransactionAccount(0);
+      return;
+    }
     if (this.isAggregate()) {
       const cached = this.transactionCache.get(0) || [];
       this.currentTransactions = this.applyAccountFilter(cached);
@@ -1115,14 +1123,15 @@ struct Index {
   /**
    * 交易页账户滑动选择器（对齐安卓 SecondaryScrollableTabRow）
    * 首项为"累计"（聚合账户，对应安卓 HOME_AGGREGATE_ID），随后为各账户
+   * 过滤器激活时仅显示该类型下的账户（对齐安卓 accountList 按 activeFilter 过滤）
    * 可横向滑动，点击切换所选账户并刷新交易
    */
   @Builder
   accountTabsRow() {
     Scroll() {
       Row() {
-        // 账户过滤器图标（对齐安卓 AccountFilterMenu）：仅聚合视图显示，点击弹出账户类型筛选
-        if (this.isAggregate()) {
+        // 账户过滤器图标（对齐安卓 AccountFilterMenu）：聚合视图或过滤激活时显示，点击弹出账户类型筛选
+        if (this.isAggregate() || this.activeFilterType >= 0) {
           Image($r('app.media.ic_filter'))
             .width(20)
             .height(20)
@@ -1134,8 +1143,8 @@ struct Index {
         }
         // 累计（聚合账户：全部账户交易）
         this.accountTabItem(0, '累计', $r('app.color.defaultAccountColor'))
-        // 各账户
-        ForEach(this.accounts, (acc: Account) => {
+        // 各账户（过滤激活时仅显示该类型账户，对齐安卓 accountList 过滤）
+        ForEach(this.filteredTabAccounts(), (acc: Account) => {
           this.accountTabItem(acc.id, acc.label, this.hexColor(acc.color))
         }, (acc: Account) => `tab_${acc.id}`)
       }
@@ -1146,6 +1155,16 @@ struct Index {
     .width('100%')
     .height(44)
     .backgroundColor($r('app.color.pageBackground'))
+  }
+
+  /**
+   * 滑动栏账户列表：过滤器激活时仅返回该类型下的账户（对齐安卓 accountList 过滤）
+   */
+  private filteredTabAccounts(): Account[] {
+    if (this.activeFilterType >= 0) {
+      return this.accounts.filter((a: Account) => a.type === this.activeFilterType);
+    }
+    return this.accounts;
   }
 
   /**
@@ -1185,13 +1204,10 @@ struct Index {
 
   /**
    * 交易页切换所选账户：聚合（0）加载全部交易，单个账户加载该账户交易
+   * 对齐安卓：过滤器激活时保留过滤状态（点击具体账户不清除过滤）
    */
   private async selectTransactionAccount(id: number): Promise<void> {
     this.selectedAccountId = id;
-    // 对齐安卓 AccountFilterMenu：过滤仅聚合视图生效，切到单账户时清除过滤
-    if (id !== 0) {
-      this.activeFilterType = -1;
-    }
     // 立即用缓存（避免显示上一个账户的旧数据），随后异步刷新
     const cached = this.transactionCache.get(id) || [];
     this.currentTransactions = this.applyAccountFilter(cached);
