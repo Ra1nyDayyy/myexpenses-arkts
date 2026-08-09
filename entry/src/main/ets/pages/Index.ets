@@ -1,4 +1,4 @@
-import { Account, AccountGrouping, SortDirection } from '../model/Account';
+import { Account, AccountGrouping, SortDirection, AccountType } from '../model/Account';
 import { Transaction, CrStatus } from '../model/Transaction';
 import { Template, Tag } from '../model/SupportEntities';
 import { Repository } from '../database/Repository';
@@ -25,6 +25,8 @@ struct Index {
   @State showEquivalent: boolean = false;
   @State expandedAccountId: number = -1;
   @State selectedAccountId: number = -1;
+  // 交易页账户类型过滤器：-1 = 显示全部，否则为 AccountType 值（仅聚合视图生效，对齐安卓 AccountFilterMenu）
+  @State activeFilterType: number = -1;
   @State isSelectionMode: boolean = false;
   @State selectedTransactionIds: number[] = [];
   @State templates: Template[] = [];
@@ -137,8 +139,83 @@ struct Index {
     this.transactionCache.set(accountId, list);
     // 刷新的是当前选中账户时，同步更新 @State 触发 UI 重渲染
     if (accountId === this.selectedAccountId) {
-      this.currentTransactions = list;
-      this.recalcSummaries(list);
+      this.currentTransactions = this.applyAccountFilter(list);
+      this.recalcSummaries(this.currentTransactions);
+    }
+  }
+
+  /**
+   * 账户类型过滤（对齐安卓 AccountFilterMenu）：
+   * 仅聚合视图（selectedAccountId = 0）且设置了 activeFilterType 时按账户类型筛选交易；
+   * 单账户视图 / 显示全部时原样返回
+   */
+  private applyAccountFilter(list: Transaction[]): Transaction[] {
+    if (!this.isAggregate() || this.activeFilterType < 0) {
+      return list;
+    }
+    const filtered: Transaction[] = [];
+    for (const t of list) {
+      const acc = this.accounts.find((a: Account) => a.id === t.accountId);
+      if (acc && acc.type === this.activeFilterType) {
+        filtered.push(t);
+      }
+    }
+    return filtered;
+  }
+
+  /**
+   * 当前实际存在的账户类型（去重排序）：对齐安卓 availableGroupFilters 动态生成菜单选项
+   */
+  private availableAccountTypes(): number[] {
+    const types: number[] = [];
+    for (const acc of this.accounts) {
+      if (types.indexOf(acc.type) === -1) {
+        types.push(acc.type);
+      }
+    }
+    return types.sort((a, b) => a - b);
+  }
+
+  /**
+   * 账户过滤器菜单（对齐安卓 AccountFilterMenu）：
+   * 弹出 ActionSheet，包含"显示全部" + 各实际存在的账户类型，选中项打勾
+   */
+  private showAccountFilterMenu(): void {
+    const sheets: Array<SheetInfo> = [];
+    sheets.push({
+      title: this.activeFilterType < 0 ? '✓ 显示全部' : '显示全部',
+      action: () => this.setAccountFilter(-1)
+    } as SheetInfo);
+    const types = this.availableAccountTypes();
+    for (const type of types) {
+      const label = Account.typeName(type as AccountType);
+      sheets.push({
+        title: this.activeFilterType === type ? `✓ ${label}` : label,
+        action: () => this.setAccountFilter(type)
+      } as SheetInfo);
+    }
+    const options: ActionSheetOptions = {
+      title: '账户筛选',
+      message: '按账户类型筛选交易（仅累计视图）',
+      confirm: {
+        value: '取消',
+        action: () => {
+        }
+      },
+      sheets: sheets
+    };
+    this.getUIContext().showActionSheet(options);
+  }
+
+  /**
+   * 设置账户类型过滤并刷新聚合视图交易
+   */
+  private setAccountFilter(type: number): void {
+    this.activeFilterType = type;
+    if (this.isAggregate()) {
+      const cached = this.transactionCache.get(0) || [];
+      this.currentTransactions = this.applyAccountFilter(cached);
+      this.recalcSummaries(this.currentTransactions);
     }
   }
 
@@ -1044,6 +1121,17 @@ struct Index {
   accountTabsRow() {
     Scroll() {
       Row() {
+        // 账户过滤器图标（对齐安卓 AccountFilterMenu）：仅聚合视图显示，点击弹出账户类型筛选
+        if (this.isAggregate()) {
+          Image($r('app.media.ic_filter'))
+            .width(20)
+            .height(20)
+            .fillColor(this.activeFilterType >= 0 ? $r('app.color.primaryColor') : $r('app.color.textSecondary'))
+            .onClick(() => {
+              this.showAccountFilterMenu();
+            })
+            .margin({ left: 4, right: 4 })
+        }
         // 累计（聚合账户：全部账户交易）
         this.accountTabItem(0, '累计', $r('app.color.defaultAccountColor'))
         // 各账户
@@ -1100,10 +1188,14 @@ struct Index {
    */
   private async selectTransactionAccount(id: number): Promise<void> {
     this.selectedAccountId = id;
+    // 对齐安卓 AccountFilterMenu：过滤仅聚合视图生效，切到单账户时清除过滤
+    if (id !== 0) {
+      this.activeFilterType = -1;
+    }
     // 立即用缓存（避免显示上一个账户的旧数据），随后异步刷新
     const cached = this.transactionCache.get(id) || [];
-    this.currentTransactions = cached;
-    this.recalcSummaries(cached);
+    this.currentTransactions = this.applyAccountFilter(cached);
+    this.recalcSummaries(this.currentTransactions);
     await this.refreshTransactions(id);
   }
 
