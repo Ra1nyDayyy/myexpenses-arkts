@@ -1064,7 +1064,7 @@ struct Index {
             .height(12)
             .fill(this.accountColor())
             .margin({ right: 6 })
-          Text(this.transactionHeaderTitle())
+          Text(this.isAggregate() ? '累计' : (this.currentAccount()?.label || '交易'))
             .fontSize(17)
             .fontWeight(FontWeight.Medium)
             .maxLines(1)
@@ -1464,19 +1464,6 @@ struct Index {
     })
   }
 
-  /**
-   * 交易页头部标题：聚合模式显示"累计"，过滤器激活时显示该账户类型名（对齐安卓 AggregateAccount.labelV2）
-   */
-  private transactionHeaderTitle(): string {
-    if (this.isAggregate()) {
-      if (this.activeFilterType >= 0) {
-        return `${Account.typeName(this.activeFilterType as AccountType)} (Σ)`;
-      }
-      return '累计';
-    }
-    return this.currentAccount()?.label || '交易';
-  }
-
   private balanceText(): string {
     if (this.isAggregate()) {
       // 聚合模式：显示全部账户合计（对齐安卓 AggregateAccount 主货币余额）
@@ -1491,10 +1478,7 @@ struct Index {
   }
 
   /**
-   * 当前余额：
-   * - 单账户：返回该账户余额
-   * - 聚合模式：默认返回全部账户合计（对齐安卓 AggregateAccount currentBalance）；
-   *   过滤器激活时仅汇总该账户类型下的所有账户（对齐安卓 accountList 过滤后聚合）
+   * 当前余额：聚合模式返回全部账户合计（对齐安卓 AggregateAccount currentBalance）
    */
   private currentBalance(): number {
     const acc = this.currentAccount();
@@ -1504,9 +1488,6 @@ struct Index {
     if (this.isAggregate()) {
       let sum = 0;
       for (let a of this.accounts) {
-        if (this.activeFilterType >= 0 && a.type !== this.activeFilterType) {
-          continue;
-        }
         sum += a.currentBalance;
       }
       return sum;
