@@ -289,43 +289,17 @@ struct AccountEdit {
           .height(56)
           .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
 
-          // 储蓄目标/信用额度
-          Row() {
-            Text(this.type === AccountType.CCARD || this.type === AccountType.LIABILITY ? '信用额度' : '储蓄目标')
-              .fontSize(14)
-              .fontColor($r('app.color.textPrimary'))
-              .width('30%')
-            Text(this.currencySymbol())
-              .fontSize(16)
-              .fontColor($r('app.color.textSecondary'))
-              .margin({ right: 6 })
-            TextInput({ placeholder: '0.00', text: this.criterionInput })
-              .type(InputType.Number)
-              .layoutWeight(1)
-              .onChange((v: string) => {
-                this.criterionInput = v;
-              })
-          }
-          .width('100%')
-          .height(48)
-          .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
-
-          // 标签（对齐安卓账户标签：该项始终显示；无标签时显示占位，可点击跳转创建）
+          // 标签（对齐安卓 tag_row：位于颜色与储蓄目标之间，行末加号跳转标签管理页）
           Row() {
             Text('标签')
               .fontSize(14)
               .fontColor($r('app.color.textPrimary'))
               .width('30%')
             if (this.tags.length === 0) {
-              Text('暂无标签，点击创建')
+              Text('暂无标签')
                 .fontSize(13)
                 .fontColor($r('app.color.textSecondary'))
                 .layoutWeight(1)
-                .textAlign(TextAlign.End)
-                .onClick(() => {
-                  router.pushUrl({ url: 'pages/TagManage' }).catch(() => {
-                  });
-                })
             } else {
               Flex({ wrap: FlexWrap.Wrap }) {
                 ForEach(this.tags, (tag: Tag) => {
@@ -351,12 +325,43 @@ struct AccountEdit {
               }
               .layoutWeight(1)
             }
+            // 加号：跳转标签管理页（对齐安卓 TagSelection -> ManageTags）
+            Image($r('sys.media.ohos_ic_public_add'))
+              .width(20)
+              .height(20)
+              .opacity(0.6)
+              .margin({ left: 8 })
+              .onClick(() => {
+                router.pushUrl({ url: 'pages/TagManage' }).catch(() => {
+                });
+              })
           }
           .width('100%')
           .height(48)
           .padding({ top: 8, bottom: 8 })
           .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
           .alignItems(VerticalAlign.Top)
+
+          // 储蓄目标/信用额度
+          Row() {
+            Text(this.type === AccountType.CCARD || this.type === AccountType.LIABILITY ? '信用额度' : '储蓄目标')
+              .fontSize(14)
+              .fontColor($r('app.color.textPrimary'))
+              .width('30%')
+            Text(this.currencySymbol())
+              .fontSize(16)
+              .fontColor($r('app.color.textSecondary'))
+              .margin({ right: 6 })
+            TextInput({ placeholder: '0.00', text: this.criterionInput })
+              .type(InputType.Number)
+              .layoutWeight(1)
+              .onChange((v: string) => {
+                this.criterionInput = v;
+              })
+          }
+          .width('100%')
+          .height(48)
+          .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
         }
         .width('100%')
         .padding({ left: 16, right: 16, top: 8 })
