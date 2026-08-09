@@ -1,4 +1,4 @@
-import { Account, AccountGrouping } from '../model/Account';
+import { Account, AccountGrouping, AccountType } from '../model/Account';
 import { Repository } from '../database/Repository';
 import { AccountRow } from './AccountRow';
 import { EmptyState } from './EmptyState';
@@ -35,6 +35,9 @@ export struct AccountListPage {
   };
   // 点击"累计"行跳转到交易页全部账户聚合视图（对齐安卓 onGroupSelected(null)）
   onGrandTotal: () => void = () => {
+  };
+  // 点击分组头箭头跳转到交易页该账户类型（对齐安卓 onGroupSelected(groupKey)）
+  onGroupSelected: (type: AccountType) => void = () => {
   };
   @State expandedId: number = -1;
   @State dragEditMode: boolean = false;
@@ -201,6 +204,7 @@ export struct AccountListPage {
                     .fontSize(13)
                     .fontColor($r('app.color.textSecondary'))
                   // 分组下账户超过一个时显示箭头（对齐安卓 HeaderV2 的 ChevronRight：group.size >= 2）
+                  // 点击跳转交易页该账户类型（对齐安卓 onGroupSelected(groupKey)）
                   if (this.groups().get(groupKey)!.length > 1) {
                     Image($r('sys.media.ohos_ic_public_arrow_right'))
                       .width(14)
@@ -208,6 +212,9 @@ export struct AccountListPage {
                       .objectFit(ImageFit.Contain)
                       .opacity(0.4)
                       .margin({ left: 4 })
+                      .onClick(() => {
+                        this.onGroupSelected(this.groups().get(groupKey)![0].type);
+                      })
                   }
                 }
                 .width('100%')

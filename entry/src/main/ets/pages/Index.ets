@@ -507,6 +507,14 @@ struct Index {
             onGrandTotal: () => {
               // 点击累计行：跳转交易页全部账户聚合视图（对齐安卓 navigateToGroup(null)）
               this.selectedAccountId = 0;
+              this.activeFilterType = -1;
+              this.selectedTab = 1;
+              this.refreshTransactions(0);
+            },
+            onGroupSelected: (type: AccountType) => {
+              // 点击分组头箭头：跳转交易页该账户类型聚合视图（对齐安卓 navigateToGroup(filter)）
+              this.selectedAccountId = 0;
+              this.activeFilterType = type;
               this.selectedTab = 1;
               this.refreshTransactions(0);
             }
