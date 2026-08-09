@@ -1122,8 +1122,8 @@ struct Index {
 
   /**
    * 交易页账户滑动选择器（对齐安卓 SecondaryScrollableTabRow）
-   * 首项为"累计"（聚合账户，对应安卓 HOME_AGGREGATE_ID），随后为各账户
-   * 过滤器激活时仅显示该类型下的账户（对齐安卓 accountList 按 activeFilter 过滤）
+   * 未过滤时：首项为"累计"（聚合账户，对应安卓 HOME_AGGREGATE_ID），随后为各账户
+   * 过滤器激活时：仅显示该类型下的账户，右侧末尾为聚合 tab（账户类型名，对齐安卓 AggregateAccount.labelV2）
    * 可横向滑动，点击切换所选账户并刷新交易
    */
   @Builder
@@ -1141,12 +1141,21 @@ struct Index {
             })
             .margin({ left: 4, right: 4 })
         }
-        // 累计（聚合账户：全部账户交易）
-        this.accountTabItem(0, '累计', $r('app.color.defaultAccountColor'))
-        // 各账户（过滤激活时仅显示该类型账户，对齐安卓 accountList 过滤）
-        ForEach(this.filteredTabAccounts(), (acc: Account) => {
-          this.accountTabItem(acc.id, acc.label, this.hexColor(acc.color))
-        }, (acc: Account) => `tab_${acc.id}`)
+        if (this.activeFilterType >= 0) {
+          // 过滤激活：各该类型账户 + 右侧末尾聚合 tab（账户类型名）
+          ForEach(this.filteredTabAccounts(), (acc: Account) => {
+            this.accountTabItem(acc.id, acc.label, this.hexColor(acc.color))
+          }, (acc: Account) => `tab_${acc.id}`)
+          this.accountTabItem(0, `${Account.typeName(this.activeFilterType as AccountType)} (Σ)`,
+            $r('app.color.defaultAccountColor'))
+        } else {
+          // 未过滤：累计（聚合账户：全部账户交易）
+          this.accountTabItem(0, '累计', $r('app.color.defaultAccountColor'))
+          // 各账户
+          ForEach(this.accounts, (acc: Account) => {
+            this.accountTabItem(acc.id, acc.label, this.hexColor(acc.color))
+          }, (acc: Account) => `tab_${acc.id}`)
+        }
       }
       .padding({ left: 8, right: 8 })
     }
