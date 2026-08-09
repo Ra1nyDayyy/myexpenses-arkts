@@ -9,11 +9,7 @@ const DOMAIN = 0x0000;
 
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
-    try {
-      this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
-    } catch (err) {
-      hilog.error(DOMAIN, 'MyExpenses', 'Failed to set colorMode. Cause: %{public}s', JSON.stringify(err));
-    }
+
     hilog.info(DOMAIN, 'MyExpenses', '%{public}s', 'Ability onCreate');
   }
 
@@ -32,6 +28,20 @@ export default class EntryAbility extends UIAbility {
     } catch (err) {
       hilog.error(DOMAIN, 'MyExpenses', 'DB init failed: %{public}s', JSON.stringify(err));
       AppStorage.setOrCreate('dbReady', false);
+    }
+
+    // 应用用户选择的主题（0 跟随系统 1 浅色 2 深色），对齐安卓 AppCompatDelegate.setDefaultNightMode
+    try {
+      const theme = await SettingsService.getInstance().getNumber('theme', 0);
+      const colorMode: ConfigurationConstant.ColorMode = theme === 1
+        ? ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT
+        : (theme === 2 ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK
+          : ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
+      this.context.getApplicationContext().setColorMode(colorMode);
+      // 同步到 AppStorage，供设置页 @StorageProp('appTheme') 显示
+      AppStorage.setOrCreate('appTheme', theme);
+    } catch (err) {
+      hilog.error(DOMAIN, 'MyExpenses', 'Failed to apply theme. Cause: %{public}s', JSON.stringify(err));
     }
 
     windowStage.loadContent('pages/Index', (err) => {

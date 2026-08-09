@@ -2,6 +2,7 @@ import { Repository } from '../database/Repository';
 import { SettingsService, PREF_KEY } from '../database/SettingsService';
 import { PageHeader } from '../components/PageHeader';
 import { router, promptAction } from '@kit.ArkUI';
+import { common, ConfigurationConstant } from '@kit.AbilityKit';
 
 /**
  * 设置页：对应 Android PreferenceActivity（扩展设置项）
@@ -12,7 +13,7 @@ import { router, promptAction } from '@kit.ArkUI';
 struct Settings {
   @State showEquivalent: boolean = false;
   @State showSumDetails: boolean = false;
-  @State theme: number = 0; // 0 跟随系统 1 浅色 2 深色
+  @StorageProp('appTheme') theme: number = 0; // 0 跟随系统 1 浅色 2 深色（AppStorage 持久，页面重建不丢失）
 
   private repository: Repository = Repository.getInstance();
   private settings: SettingsService = SettingsService.getInstance();
@@ -24,7 +25,8 @@ struct Settings {
   async load(): Promise<void> {
     this.showEquivalent = await this.settings.getBoolean(PREF_KEY.SHOW_EQUIVALENT, false);
     this.showSumDetails = await this.settings.getBoolean(PREF_KEY.SHOW_SUM_DETAILS, false);
-    this.theme = await this.settings.getNumber(PREF_KEY.THEME, 0);
+    // theme 由 @StorageProp('appTheme') 驱动，这里不重复赋值
+    // （启动时 EntryAbility 已把保存值写入 AppStorage）
   }
 
   private async toggleEquivalent(v: boolean): Promise<void> {
@@ -70,10 +72,32 @@ struct Settings {
   }
 
   private async applyTheme(t: number): Promise<void> {
-    this.theme = t;
+
+    // 先持久化设置（供下次启动恢复）
     await this.settings.setNumber(PREF_KEY.THEME, t);
-    AppStorage.setOrCreate('appTheme', t);
-    promptAction.showToast({ message: '主题已切换，重启后生效' });
+    // 立即切换颜色模式（对齐安卓 AppCompatDelegate.setDefaultNightMode）
+    // 0 跟随系统 -> COLOR_MODE_NOT_SET / 1 浅色 -> COLOR_MODE_LIGHT / 2 深色 -> COLOR_MODE_DARK
+    try {
+      const host = this.getUIContext().getHostContext();
+      if (host) {
+        const colorMode: ConfigurationConstant.ColorMode = t === 1
+          ? ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT
+          : (t === 2 ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK
+            : ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
+        host.getApplicationContext().setColorMode(colorMode);
+
+      }
+    } catch (err) {
+      console.error('MyExpenses setColorMode failed: ' + JSON.stringify(err));
+    }
+    // setColorMode 会触发应用资源重载，UI 不再响应状态变更通知。
+    // 对齐安卓 PreferenceActivity.recreate()：强制重建当前页面以正确显示新主题值。
+    setTimeout(() => {
+      AppStorage.setOrCreate('appTheme', t);
+      router.replaceUrl({ url: 'pages/Settings' }).catch(() => {
+      });
+    }, 200);
+    promptAction.showToast({ message: '主题已切换' });
   }
 
   build() {

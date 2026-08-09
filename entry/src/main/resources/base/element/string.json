@@ -629,6 +629,10 @@
       "value": "搜索功能开发中"
     },
     {
+      "name": "toast_scan_developing",
+      "value": "扫描识别功能开发中"
+    },
+    {
       "name": "toast_create_account_first",
       "value": "请先创建账户"
     },

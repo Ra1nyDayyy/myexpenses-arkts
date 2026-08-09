@@ -5,6 +5,7 @@ import { Repository } from '../database/Repository';
 import { SettingsService, PREF_KEY } from '../database/SettingsService';
 import { AccountListPage } from '../components/AccountListPage';
 import { TransactionListPage } from '../components/TransactionListPage';
+import { TransactionDetailDialog } from '../components/TransactionDetailDialog';
 import { EmptyState } from '../components/EmptyState';
 import { formatMoney } from '../model/Money';
 import { currencyByCode } from '../model/CurrencyUnit';
@@ -27,6 +28,16 @@ struct Index {
   @State isSelectionMode: boolean = false;
   @State selectedTransactionIds: number[] = [];
   @State templates: Template[] = [];
+  @State tags: Tag[] = [];
+  // 当前交易列表（响应式数据源：切换账户时整体重新赋值触发列表重渲染）
+  @State currentTransactions: Transaction[] = [];
+  // 汇总卡片（对齐安卓 Total/收入/支出/转账）：切换账户时由 refreshTransactions 同步更新
+  @State summaryIncome: number = 0;
+  @State summaryExpense: number = 0;
+  @State summaryTransfer: number = 0;
+  // 交易页 FAB（对齐安卓 MyExpensesV2 FloatingActionButtonMenu）
+  @State fabExpanded: boolean = false; // 展开菜单
+  @State lastAction: number = -1; // 记住的上次操作：-1 支出 / 1 收入 / 2 转账
 
 
   private repository: Repository = Repository.getInstance();
@@ -41,22 +52,30 @@ struct Index {
   }
 
   async loadData(): Promise<void> {
-    this.loading = true;
+    // 仅首次加载（accounts 为空）显示全屏 loading；
+    // 后续刷新保持界面，避免 Tabs 卸载重建导致子组件状态（如账户行展开 expandedId）丢失
+    if (this.accounts.length === 0) {
+      this.loading = true;
+    }
     try {
       const grouping = await this.settings.getNumber(PREF_KEY.GROUPING, AccountGrouping.TYPE);
       const showEquivalent = await this.settings.getBoolean(PREF_KEY.SHOW_EQUIVALENT, false);
       this.grouping = grouping as AccountGrouping;
       this.showEquivalent = showEquivalent;
+      this.lastAction = await this.settings.getNumber(PREF_KEY.LAST_ACTION, -1);
       this.accounts = await this.repository.getAccounts();
       this.templates = await this.repository.getTemplates();
+      this.tags = await this.repository.getTags();
       if (this.accounts.length > 0) {
         if (this.selectedAccountId < 0) {
           this.selectedAccountId = this.accounts[0].id;
         }
-        // 账户存在时默认交易页需要账户，选中账户校验
-        const exists = this.accounts.some((a: Account) => a.id === this.selectedAccountId);
-        if (!exists) {
-          this.selectedAccountId = this.accounts[0].id;
+        // 聚合模式（0）保持；否则校验选中账户存在
+        if (this.selectedAccountId !== 0) {
+          const exists = this.accounts.some((a: Account) => a.id === this.selectedAccountId);
+          if (!exists) {
+            this.selectedAccountId = this.accounts[0].id;
+          }
         }
       } else {
         this.selectedAccountId = -1;
@@ -64,6 +83,8 @@ struct Index {
       // 刷新交易缓存
       if (this.selectedAccountId > 0) {
         await this.refreshTransactions(this.selectedAccountId);
+      } else if (this.selectedAccountId === 0) {
+        await this.refreshTransactions(0);
       }
     } catch (e) {
       console.error('加载账户失败: ' + JSON.stringify(e));
@@ -72,7 +93,18 @@ struct Index {
   }
 
   private currentAccount(): Account | null {
+    if (this.selectedAccountId === 0) {
+      // 聚合模式（全部账户累计）：无单一账户
+      return null;
+    }
     return this.accounts.find((a: Account) => a.id === this.selectedAccountId) || null;
+  }
+
+  /**
+   * 是否聚合模式（selectedAccountId = 0）：对应安卓 selectAccount(0) 的聚合账户
+   */
+  private isAggregate(): boolean {
+    return this.selectedAccountId === 0;
   }
 
   private symbol(): string {
@@ -87,20 +119,50 @@ struct Index {
 
   private transactionCache: Map<number, Transaction[]> = new Map();
 
+  // 关闭/计入总数切换防抖集合：避免异步处理期间重复点击造成来回切换
+  private sealedBusy: Set<number> = new Set<number>();
+  private excludeBusy: Set<number> = new Set<number>();
+
   private transactionsFor(acc: Account): Transaction[] {
     return this.transactionCache.get(acc.id) || [];
   }
 
-  private transactionsForCurrent(): Transaction[] {
-    return this.transactionCache.get(this.selectedAccountId) || [];
-  }
 
   private async refreshTransactions(accountId: number): Promise<void> {
-    const list = await this.repository.getTransactions(accountId);
+    // 聚合模式（accountId = 0）：加载全部账户交易（对齐安卓 selectAccount(0) 聚合视图）
+    const list = accountId === 0
+      ? await this.repository.getAllTransactions()
+      : await this.repository.getTransactions(accountId);
+
     this.transactionCache.set(accountId, list);
-    const tmp = this.accounts;
-    this.accounts = [];
-    this.accounts = tmp;
+    // 刷新的是当前选中账户时，同步更新 @State 触发 UI 重渲染
+    if (accountId === this.selectedAccountId) {
+      this.currentTransactions = list;
+      this.recalcSummaries(list);
+    }
+  }
+
+  /**
+   * 汇总卡片计算：对齐安卓 AccountsScreen 的 Total/收入/支出/转账
+   */
+  private recalcSummaries(list: Transaction[]): void {
+    let income = 0;
+    let expense = 0;
+    let transfer = 0;
+    for (let t of list) {
+      if (t.isTransfer()) {
+        transfer += t.amount;
+      }
+      if (t.amount > 0) {
+        income += t.amount;
+      } else {
+        expense += t.amount;
+      }
+    }
+    this.summaryIncome = income;
+    this.summaryExpense = expense;
+    this.summaryTransfer = transfer;
+
   }
 
   private groupingLabel(): string {
@@ -156,39 +218,80 @@ struct Index {
   }
 
   /**
-   * FAB 弹出新建菜单（支出/收入/转账，各入口独立类型）
+   * FAB 主按钮图标：默认/上次操作类型；展开时显示加号并旋转45°（对齐安卓）
+   * 类型：-1 支出 / 1 收入 / 2 转账 / 3 拆分 / 4 扫描（对齐安卓 Action.STANDARD_ACTIONS）
    */
-  private showCreateMenu(): void {
-    const options: ActionSheetOptions = {
-      title: '新建交易',
-      message: '选择交易类型',
-      confirm: {
-        value: '取消',
-        action: () => {
-        }
-      },
-      sheets: [
-        {
-          title: '支出',
-          action: () => {
-            this.navigateToExpenseEdit(-1, this.selectedAccountId, -1);
-          }
-        },
-        {
-          title: '收入',
-          action: () => {
-            this.navigateToExpenseEdit(-1, this.selectedAccountId, 1);
-          }
-        },
-        {
-          title: '转账',
-          action: () => {
-            this.navigateToExpenseEdit(-1, this.selectedAccountId, 2);
-          }
-        }
-      ]
-    };
-    this.getUIContext().showActionSheet(options);
+  private fabMainIcon(): Resource {
+    if (this.fabExpanded) {
+      return $r('sys.media.ohos_ic_public_add');
+    }
+    switch (this.lastAction) {
+      case 1:
+        return $r('app.media.ic_income');
+      case 2:
+        return $r('app.media.ic_transfer');
+      case 3:
+        return $r('app.media.ic_split');
+      case 4:
+        return $r('sys.media.ohos_ic_public_scan');
+      default:
+        return $r('app.media.ic_expense');
+    }
+  }
+
+  /**
+   * 从 FAB 创建交易：记录上次操作并跳转编辑页
+   * 扫描（4）尚未实现 OCR，提示开发中（对齐安卓 contribFeatureRequested OCR）
+   */
+  private async createFromFab(type: number): Promise<void> {
+    this.fabExpanded = false;
+    if (type === 4) {
+      promptAction.showToast({ message: $r('app.string.toast_scan_developing') });
+      return;
+    }
+    this.lastAction = type;
+    await this.settings.setNumber(PREF_KEY.LAST_ACTION, type);
+    this.navigateToExpenseEdit(-1, this.selectedAccountId, type);
+  }
+
+  /**
+   * FAB 内容色：根据账户颜色亮度返回黑/白（对齐安卓 Color.calculateOnColor）
+   */
+  private fabOnColor(): ResourceColor {
+    const acc = this.currentAccount();
+    if (acc && acc.color) {
+      const r = (acc.color >> 16) & 0xFF;
+      const g = (acc.color >> 8) & 0xFF;
+      const b = acc.color & 0xFF;
+      const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+      return luminance > 0.5 ? Color.Black : Color.White;
+    }
+    return Color.White;
+  }
+
+  /**
+   * FAB 展开菜单项（对齐安卓 FloatingActionButtonMenu Popup 圆形项）
+   * 背景色为账户颜色、内容色为高对比黑/白（对齐安卓 containerColor = accountColor）
+   */
+  @Builder
+  fabMenuItem(label: string, icon: Resource, type: number) {
+    Row({ space: 8 }) {
+      Image(icon)
+        .width(20)
+        .height(20)
+        .fillColor(this.fabOnColor())
+      Text(label)
+        .fontSize(14)
+        .fontColor(this.fabOnColor())
+    }
+    .height(48)
+    .padding({ left: 16, right: 16 })
+    .borderRadius(24)
+    .backgroundColor(this.accountColor())
+    .shadow({ radius: 4, color: '#40000000', offsetY: 2 })
+    .onClick(() => {
+      this.createFromFab(type);
+    })
   }
 
   build() {
@@ -205,7 +308,8 @@ struct Index {
         .alignItems(HorizontalAlign.Center)
       } else {
         // 原生 Tabs：底部 TabBar 贴底（对齐 Android BottomNavigation）
-        Tabs({ barPosition: BarPosition.End }) {
+        // 绑定 index 使其受控：程序修改 selectedTab 时（如点击累计行跳转交易页）同步切换页签内容
+        Tabs({ barPosition: BarPosition.End, index: this.selectedTab }) {
           TabContent() {
             this.accountsTab()
           }.tabBar(this.tabBuilder(0, '账户', $r('app.media.ic_tab_account')))
@@ -314,6 +418,12 @@ struct Index {
             },
             onCreateAccount: () => {
               this.navigateToAccountEdit(-1);
+            },
+            onGrandTotal: () => {
+              // 点击累计行：跳转交易页全部账户聚合视图（对齐安卓 navigateToGroup(null)）
+              this.selectedAccountId = 0;
+              this.selectedTab = 1;
+              this.refreshTransactions(0);
             }
           })
         }
@@ -331,6 +441,10 @@ struct Index {
     Stack() {
       Column() {
         this.transactionHeader()
+        // 账户滑动选择器（对齐安卓 SecondaryScrollableTabRow：累计 + 各账户，可横向滑动）
+        if (this.accounts.length > 1) {
+          this.accountTabsRow()
+        }
         // 汇总卡片（对齐安卓 AccountsScreen 汇总区）
         if (this.accounts.length > 0) {
           this.summaryCard()
@@ -340,9 +454,10 @@ struct Index {
         } else {
           TransactionListPage({
             account: this.currentAccount() || new Account(),
-            transactions: this.transactionsForCurrent(),
+            transactions: this.currentTransactions,
             grouping: 3,
             selectionMode: this.isSelectionMode,
+            showAccount: this.isAggregate(),
             selectedIds: this.selectedTransactionIds,
             onToggleStatus: (id: number) => {
               this.toggleStatus(id);
@@ -351,7 +466,7 @@ struct Index {
               if (this.isSelectionMode) {
                 this.toggleSelect(id);
               } else {
-                this.navigateToExpenseEdit(id, this.selectedAccountId);
+                this.showTransactionMenu(id);
               }
             },
             onCreateTransaction: () => {
@@ -365,31 +480,93 @@ struct Index {
 
       // 交易 FAB（对齐安卓 Material3 圆角矩形 + 展开菜单）
       if (this.accounts.length > 0) {
-        Row({ space: 8 }) {
-          Image($r('app.media.ic_expense'))
-            .width(22)
-            .height(22)
-            .fillColor(Color.White)
-          Divider()
-            .vertical(true)
-            .color('#66FFFFFF')
-            .height(22)
-          Image($r('app.media.ic_income'))
-            .width(22)
-            .height(22)
-            .fillColor(Color.White)
+        // 展开菜单时点击外部关闭（半透明遮罩，捕获点击）
+        if (this.fabExpanded) {
+          Column()
+            .width('100%')
+            .height('100%')
+            .backgroundColor('#00000000')
+            .onClick(() => {
+              this.fabExpanded = false;
+            })
         }
-        .width(96)
-        .height(52)
-        .borderRadius(26)
-        .padding({ left: 16, right: 16 })
-        .backgroundColor($r('app.color.primaryColor'))
-        .shadow({ radius: 8, color: '#40000000', offsetY: 4 })
-        .position({ x: '70%', y: '78%' })
-        .alignItems(VerticalAlign.Center)
-        .onClick(() => {
-          this.showCreateMenu();
-        })
+        // FAB 主体 + 展开菜单（整体定位在右下角，菜单弹出在 FAB 上方）
+        Stack({ alignContent: Alignment.BottomEnd }) {
+          // 展开菜单（对齐安卓 Popup：图标+文字，垂直排列，圆角胶囊）
+          // 菜单项与安卓 Action.STANDARD_ACTIONS 一致：支出/收入/转账/拆分/扫描
+          if (this.fabExpanded) {
+            Column({ space: 8 }) {
+              this.fabMenuItem('支出', $r('app.media.ic_expense'), -1)
+              this.fabMenuItem('收入', $r('app.media.ic_income'), 1)
+              this.fabMenuItem('转账', $r('app.media.ic_transfer'), 2)
+              this.fabMenuItem('拆分', $r('app.media.ic_split'), 3)
+              this.fabMenuItem('扫描', $r('sys.media.ohos_ic_public_scan'), 4)
+            }
+            .alignItems(HorizontalAlign.End)
+            .margin({ bottom: 64 })
+          }
+          // FAB 主体
+          if (this.currentAccount()?.sealed === true) {
+            // 账户关闭：锁图标禁用（对齐安卓 sealed FAB）
+            Row() {
+              Image($r('app.media.ic_locked'))
+                .width(22)
+                .height(22)
+                .fillColor(Color.White)
+            }
+            .width(96)
+            .height(56)
+            .borderRadius(28)
+            .backgroundColor('#9E9E9E')
+            .shadow({ radius: 8, color: '#40000000', offsetY: 4 })
+            .onClick(() => {
+              promptAction.showToast({ message: $r('app.string.account_closed') });
+            })
+          } else {
+            Row({ space: 8 }) {
+              // 主按钮：点击直接创建默认类型；展开时图标旋转45°
+              Image(this.fabMainIcon())
+                .width(22)
+                .height(22)
+                .fillColor(this.fabOnColor())
+                .rotate({ angle: this.fabExpanded ? 45 : 0 })
+                .onClick(() => {
+                  if (this.fabExpanded) {
+                    this.fabExpanded = false;
+                  } else {
+                    this.createFromFab(this.lastAction);
+                  }
+                })
+                .gesture(
+                  LongPressGesture()
+                    .onAction(() => {
+                      this.fabExpanded = !this.fabExpanded;
+                    })
+                )
+              // 竖线 + 上箭头：点击展开菜单（对齐安卓 standard FAB）
+              Divider()
+                .vertical(true)
+                .color(this.fabOnColor())
+                .opacity(0.4)
+                .height(22)
+              Image($r('sys.media.ohos_ic_public_arrow_up'))
+                .width(20)
+                .height(20)
+                .fillColor(this.fabOnColor())
+                .onClick(() => {
+                  this.fabExpanded = !this.fabExpanded;
+                })
+            }
+            .width(96)
+            .height(56)
+            .borderRadius(28)
+            .padding({ left: 16, right: 16 })
+            .backgroundColor(this.accountColor())
+            .shadow({ radius: 8, color: '#40000000', offsetY: 4 })
+          }
+        }
+        .markAnchor({ x: '100%', y: '100%' })
+        .position({ x: '95%', y: '98%' })
       }
     }
     .width('100%')
@@ -794,7 +971,7 @@ struct Index {
             .height(12)
             .fill(this.accountColor())
             .margin({ right: 6 })
-          Text(this.currentAccount()?.label || '交易')
+          Text(this.isAggregate() ? '累计' : (this.currentAccount()?.label || '交易'))
             .fontSize(17)
             .fontWeight(FontWeight.Medium)
             .maxLines(1)
@@ -856,6 +1033,78 @@ struct Index {
     .height(56)
     .padding({ left: 16, right: 16 })
     .backgroundColor($r('app.color.pageBackground'))
+  }
+
+  /**
+   * 交易页账户滑动选择器（对齐安卓 SecondaryScrollableTabRow）
+   * 首项为"累计"（聚合账户，对应安卓 HOME_AGGREGATE_ID），随后为各账户
+   * 可横向滑动，点击切换所选账户并刷新交易
+   */
+  @Builder
+  accountTabsRow() {
+    Scroll() {
+      Row() {
+        // 累计（聚合账户：全部账户交易）
+        this.accountTabItem(0, '累计', $r('app.color.defaultAccountColor'))
+        // 各账户
+        ForEach(this.accounts, (acc: Account) => {
+          this.accountTabItem(acc.id, acc.label, this.hexColor(acc.color))
+        }, (acc: Account) => `tab_${acc.id}`)
+      }
+      .padding({ left: 8, right: 8 })
+    }
+    .scrollable(ScrollDirection.Horizontal)
+    .scrollBar(BarState.Off)
+    .width('100%')
+    .height(44)
+    .backgroundColor($r('app.color.pageBackground'))
+  }
+
+  /**
+   * 账户 Tab 单项：选中时主色文字 + 底部账户色指示线（对齐安卓 SecondaryIndicator color = accountColor）
+   */
+  @Builder
+  accountTabItem(id: number, label: string, indicatorColor: ResourceColor) {
+    Column() {
+      Text(label)
+        .fontSize(14)
+        .fontColor(this.selectedAccountId === id ? $r('app.color.primaryColor') : $r('app.color.textSecondary'))
+        .fontWeight(this.selectedAccountId === id ? FontWeight.Medium : FontWeight.Normal)
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .padding({ left: 8, right: 8 })
+      // 底部指示线：选中时显示账户色，否则透明占位保持高度一致
+      Divider()
+        .width(36)
+        .strokeWidth(2)
+        .color(this.selectedAccountId === id ? indicatorColor : Color.Transparent)
+        .margin({ top: 3 })
+    }
+    .height(44)
+    .justifyContent(FlexAlign.Center)
+    .onClick(() => {
+      this.selectTransactionAccount(id);
+    })
+  }
+
+  private hexColor(color: number): ResourceColor {
+    if (color) {
+      const rgb = color & 0xFFFFFF;
+      return '#' + rgb.toString(16).padStart(6, '0').toUpperCase();
+    }
+    return $r('app.color.defaultAccountColor');
+  }
+
+  /**
+   * 交易页切换所选账户：聚合（0）加载全部交易，单个账户加载该账户交易
+   */
+  private async selectTransactionAccount(id: number): Promise<void> {
+    this.selectedAccountId = id;
+    // 立即用缓存（避免显示上一个账户的旧数据），随后异步刷新
+    const cached = this.transactionCache.get(id) || [];
+    this.currentTransactions = cached;
+    this.recalcSummaries(cached);
+    await this.refreshTransactions(id);
   }
 
   /**
@@ -933,10 +1182,61 @@ struct Index {
       }
       .width('100%')
 
+      // 收入/支出/转账：直接读取 @State 值（不经过 @Builder 参数传递，确保响应式追踪）
       Row() {
-        this.summaryItem($r('app.media.ic_income'), '收入', this.sumIncome(), $r('app.color.colorIncome'))
-        this.summaryItem($r('app.media.ic_expense'), '支出', this.sumExpense(), $r('app.color.colorExpense'))
-        this.summaryItem($r('app.media.ic_transfer'), '转帐', this.sumTransfer(), $r('app.color.colorTransfer'))
+        Column({ space: 2 }) {
+          Row({ space: 4 }) {
+            Image($r('app.media.ic_income'))
+              .width(14)
+              .height(14)
+              .fillColor($r('app.color.colorIncome'))
+            Text(`${this.symbol()}${formatMoney(this.summaryIncome, this.fractionDigits())}`)
+              .fontSize(14)
+              .fontColor($r('app.color.colorIncome'))
+              .fontWeight(FontWeight.Medium)
+          }
+          Text('收入')
+            .fontSize(11)
+            .fontColor($r('app.color.textSecondary'))
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Start)
+
+        Column({ space: 2 }) {
+          Row({ space: 4 }) {
+            Image($r('app.media.ic_expense'))
+              .width(14)
+              .height(14)
+              .fillColor($r('app.color.colorExpense'))
+            Text(`${this.symbol()}${formatMoney(this.summaryExpense, this.fractionDigits())}`)
+              .fontSize(14)
+              .fontColor($r('app.color.colorExpense'))
+              .fontWeight(FontWeight.Medium)
+          }
+          Text('支出')
+            .fontSize(11)
+            .fontColor($r('app.color.textSecondary'))
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Start)
+
+        Column({ space: 2 }) {
+          Row({ space: 4 }) {
+            Image($r('app.media.ic_transfer'))
+              .width(14)
+              .height(14)
+              .fillColor($r('app.color.colorTransfer'))
+            Text(`${this.symbol()}${formatMoney(this.summaryTransfer, this.fractionDigits())}`)
+              .fontSize(14)
+              .fontColor($r('app.color.colorTransfer'))
+              .fontWeight(FontWeight.Medium)
+          }
+          Text('转帐')
+            .fontSize(11)
+            .fontColor($r('app.color.textSecondary'))
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Start)
       }
       .width('100%')
       .margin({ top: 8 })
@@ -944,27 +1244,6 @@ struct Index {
     .width('100%')
     .padding({ left: 16, right: 16, top: 12, bottom: 12 })
     .backgroundColor($r('app.color.summaryCardBackground'))
-  }
-
-  @Builder
-  summaryItem(icon: Resource, label: string, amount: number, color: ResourceColor) {
-    Column({ space: 2 }) {
-      Row({ space: 4 }) {
-        Image(icon)
-          .width(14)
-          .height(14)
-          .fillColor(color)
-        Text(`${this.symbol()}${formatMoney(amount, this.fractionDigits())}`)
-          .fontSize(14)
-          .fontColor(color)
-          .fontWeight(FontWeight.Medium)
-      }
-      Text(label)
-        .fontSize(11)
-        .fontColor($r('app.color.textSecondary'))
-    }
-    .layoutWeight(1)
-    .alignItems(HorizontalAlign.Start)
   }
 
   @Builder
@@ -1061,6 +1340,10 @@ struct Index {
   }
 
   private balanceText(): string {
+    if (this.isAggregate()) {
+      // 聚合模式：显示全部账户合计（对齐安卓 AggregateAccount 主货币余额）
+      return `¥${formatMoney(this.currentBalance(), 2)}`;
+    }
     const acc = this.currentAccount();
     if (!acc) {
       return '';
@@ -1069,9 +1352,22 @@ struct Index {
     return `${symbol}${formatMoney(acc.currentBalance, currencyByCode(acc.currency).fractionDigits)}`;
   }
 
+  /**
+   * 当前余额：聚合模式返回全部账户合计（对齐安卓 AggregateAccount currentBalance）
+   */
   private currentBalance(): number {
     const acc = this.currentAccount();
-    return acc ? acc.currentBalance : 0;
+    if (acc) {
+      return acc.currentBalance;
+    }
+    if (this.isAggregate()) {
+      let sum = 0;
+      for (let a of this.accounts) {
+        sum += a.currentBalance;
+      }
+      return sum;
+    }
+    return 0;
   }
 
   private accountColor(): ResourceColor {
@@ -1083,33 +1379,120 @@ struct Index {
     return $r('app.color.defaultAccountColor');
   }
 
-  private sumIncome(): number {
-    const acc = this.currentAccount();
-    return acc ? acc.sumIncome : 0;
-  }
-
-  private sumExpense(): number {
-    const acc = this.currentAccount();
-    return acc ? acc.sumExpense : 0;
-  }
-
-  private sumTransfer(): number {
-    const acc = this.currentAccount();
-    return acc ? acc.sumTransfer : 0;
-  }
 
   private balanceColor(): ResourceColor {
     const acc = this.currentAccount();
-    if (!acc) {
+    if (!acc && !this.isAggregate()) {
       return $r('app.color.textTertiary');
     }
-    if (acc.currentBalance > 0) {
+    const balance = this.currentBalance();
+    if (balance > 0) {
       return $r('app.color.colorIncome');
     }
-    if (acc.currentBalance < 0) {
+    if (balance < 0) {
       return $r('app.color.colorExpense');
     }
     return $r('app.color.textTertiary');
+  }
+
+  /**
+   * 点击交易行弹出操作菜单（对齐安卓 TransactionList 点击弹菜单：详情/编辑/删除）
+   */
+  private showTransactionMenu(id: number): void {
+    const tx = this.currentTransactions.find((t: Transaction) => t.id === id);
+    if (!tx) {
+      return;
+    }
+    const sheets: Array<SheetInfo> = [
+      { title: '详细信息', action: () => this.showTransactionDetail(tx) },
+      { title: '编辑', action: () => this.navigateToExpenseEdit(id, this.selectedAccountId) },
+      { title: '删除', action: () => this.confirmDeleteTransaction(tx) }
+    ];
+    const options: ActionSheetOptions = {
+      title: '交易操作',
+      message: tx.categoryPath || '未分类',
+      confirm: {
+        value: '取消',
+        action: () => {
+        }
+      },
+      sheets: sheets
+    };
+    this.getUIContext().showActionSheet(options);
+  }
+
+  private detailDialog: CustomDialogController | null = null;
+
+  /**
+   * 显示交易只读详情弹窗（对齐安卓 TransactionDetailFragment）
+   */
+  private showTransactionDetail(tx: Transaction): void {
+    if (this.detailDialog) {
+      this.detailDialog.close();
+    }
+    this.detailDialog = new CustomDialogController({
+      builder: TransactionDetailDialog({
+        transaction: tx,
+        tagLabels: this.tagLabelList(tx),
+        onClose: () => {
+          this.detailDialog?.close();
+        }
+      }),
+      autoCancel: true,
+      alignment: DialogAlignment.Center,
+      customStyle: true,
+      cornerRadius: 16
+    });
+    this.detailDialog.open();
+  }
+
+  private tagLabelList(tx: Transaction): string[] {
+    const list: string[] = [];
+    for (let tagId of tx.tagIds) {
+      const t = this.tags.find((tag: Tag) => tag.id === tagId);
+      if (t) {
+        list.push(t.label);
+      }
+    }
+    return list;
+  }
+
+  /**
+   * 删除确认框：防止误删（对齐安卓删除确认）
+   */
+  private confirmDeleteTransaction(tx: Transaction): void {
+    this.getUIContext().showAlertDialog({
+      title: '删除交易',
+      message: '确定要删除这笔交易吗？此操作不可恢复。',
+      primaryButton: {
+        value: '取消',
+        action: () => {
+        }
+      },
+      secondaryButton: {
+        value: '删除',
+        fontColor: $r('app.color.colorExpense'),
+        action: () => {
+          this.deleteTransaction(tx);
+        }
+      }
+    });
+  }
+
+  private async deleteTransaction(tx: Transaction): Promise<void> {
+    try {
+      if (tx.isSplit()) {
+        await this.repository.deleteSplitTransaction(tx.id);
+      } else {
+        await this.repository.deleteTransaction(tx.id);
+      }
+      promptAction.showToast({ message: '已删除' });
+      // 刷新当前视图的交易列表与汇总
+      await this.refreshTransactions(this.selectedAccountId);
+    } catch (e) {
+      console.error('删除交易失败: ' + JSON.stringify(e));
+      promptAction.showToast({ message: '删除失败' });
+    }
   }
 
   private toggleSelect(id: number): void {
@@ -1131,21 +1514,54 @@ struct Index {
   }
 
   private async toggleSealed(id: number): Promise<void> {
+    if (this.sealedBusy.has(id)) {
+      return; // 防抖：处理中忽略重复点击，避免异步竞态来回切换
+    }
     const acc = this.accounts.find((a: Account) => a.id === id);
     if (!acc) {
       return;
     }
-    await this.repository.setAccountSealed(id, !acc.sealed);
-    await this.loadData();
+    this.sealedBusy.add(id);
+    const target = !acc.sealed;
+    // 乐观更新：先本地翻转，UI 立即反馈（对齐安卓 toggleAccountSealed 即时生效）
+    acc.sealed = target;
+    this.accounts = [...this.accounts];
+    try {
+      await this.repository.setAccountSealed(id, target);
+      await this.loadData();
+    } catch (e) {
+      console.error('切换账户关闭状态失败: ' + JSON.stringify(e));
+      // 写库失败回滚本地状态
+      acc.sealed = !target;
+      this.accounts = [...this.accounts];
+    } finally {
+      this.sealedBusy.delete(id);
+    }
   }
 
   private async toggleExclude(id: number): Promise<void> {
+    if (this.excludeBusy.has(id)) {
+      return; // 防抖：处理中忽略重复点击
+    }
     const acc = this.accounts.find((a: Account) => a.id === id);
     if (!acc) {
       return;
     }
-    await this.repository.setAccountExcludeFromTotals(id, !acc.excludeFromTotals);
-    await this.loadData();
+    this.excludeBusy.add(id);
+    const target = !acc.excludeFromTotals;
+    // 乐观更新：先本地翻转，UI 立即反馈
+    acc.excludeFromTotals = target;
+    this.accounts = [...this.accounts];
+    try {
+      await this.repository.setAccountExcludeFromTotals(id, target);
+      await this.loadData();
+    } catch (e) {
+      console.error('切换账户计入总数失败: ' + JSON.stringify(e));
+      acc.excludeFromTotals = !target;
+      this.accounts = [...this.accounts];
+    } finally {
+      this.excludeBusy.delete(id);
+    }
   }
 
   /**

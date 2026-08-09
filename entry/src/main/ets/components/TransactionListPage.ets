@@ -1,7 +1,7 @@
 import { Transaction, CrStatus } from '../model/Transaction';
 import { Account, AccountGrouping } from '../model/Account';
 import { TransactionRow } from './TransactionRow';
-import { EmptyState } from './EmptyState';
+
 import { formatMoney } from '../model/Money';
 import { currencyByCode } from '../model/CurrencyUnit';
 import { formatDate } from '../common/FormatUtils';
@@ -12,11 +12,15 @@ import { formatDate } from '../common/FormatUtils';
  */
 @Component
 export struct TransactionListPage {
-  account: Account = new Account();
-  transactions: Transaction[] = [];
+  // 父组件切换所选账户时会整体重新赋值（@State currentTransactions），
+  // 必须用 @Prop 建立单向响应式同步，否则子组件不会随账户切换重渲染
+  @Prop account: Account = new Account();
+  @Prop transactions: Transaction[] = [];
   @Prop grouping: number = 0; // 0 none 1 day 2 week 3 month 4 year
   @Prop showSumDetails: boolean = false;
   @Prop selectionMode: boolean = false;
+  // 聚合模式（全部账户累计）：交易行显示所属账户名
+  @Prop showAccount: boolean = false;
   selectedIds: number[] = [];
   onToggleStatus: (id: number) => void = () => {
   };
@@ -81,17 +85,17 @@ export struct TransactionListPage {
   build() {
     Column() {
       if (this.transactions.length === 0) {
-        EmptyState({
-          iconResource: $r('app.media.ic_tab_transaction'),
-          title: '未有开支!',
-          subtitle: '点击下方按钮记录第一笔交易',
-          actionText: '新建交易',
-          onAction: () => {
-            this.onCreateTransaction();
-          }
-        })
+        // 空态：对齐安卓 no_expenses —— 纯文字居中（无图标/按钮）
+        Column() {
+          Text('未有开支!')
+            .fontSize(17)
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.textPrimary'))
+            .textAlign(TextAlign.Center)
+        }
         .width('100%')
         .layoutWeight(1)
+        .justifyContent(FlexAlign.Center)
       } else {
         List({ space: 0 }) {
           ForEach(Array.from(this.grouped().keys()), (groupKey: string) => {
@@ -103,6 +107,7 @@ export struct TransactionListPage {
                   TransactionRow({
                     transaction: t,
                     selected: this.selectedIds.indexOf(t.id) >= 0,
+                    showAccount: this.showAccount,
                     onToggleStatus: (id: number) => {
                       this.onToggleStatus(id);
                     },

@@ -12,7 +12,8 @@ import { currencyByCode } from '../model/CurrencyUnit';
  */
 @Component
 export struct AccountListPage {
-  accounts: Account[] = [];
+  // @Prop 单向响应式：父组件（Index）更新 accounts 后本组件立即重渲染
+  @Prop accounts: Account[] = [];
   @Prop grouping: AccountGrouping = AccountGrouping.NONE;
   @Prop selectedAccountId: number = -1;
   @Prop showEquivalent: boolean = false;
@@ -32,6 +33,9 @@ export struct AccountListPage {
   };
   onReorder: (from: number, to: number) => void = () => {
   };
+  // 点击"累计"行跳转到交易页全部账户聚合视图（对齐安卓 onGroupSelected(null)）
+  onGrandTotal: () => void = () => {
+  };
   @State expandedId: number = -1;
   @State dragEditMode: boolean = false;
 
@@ -50,10 +54,13 @@ export struct AccountListPage {
         case AccountGrouping.TYPE:
         case AccountGrouping.NONE:
           // 账户列表默认按类型分组（对齐安卓 AccountGrouping.TYPE）
-          key = Account.typeName(acc.type);
+          key = `${Account.typeName(acc.type)} (Σ)`;
           break;
         case AccountGrouping.CURRENCY:
-          key = acc.currency;
+          key = `${acc.currency} (Σ)`;
+          break;
+        case AccountGrouping.FLAG:
+          key = `${acc.flagLabel} (Σ)`;
           break;
         default:
           key = '所有账户';
@@ -76,6 +83,24 @@ export struct AccountListPage {
       }
     }
     return sum;
+  }
+
+  /**
+   * 全部账户合计（排除不计入总数的账户），对齐安卓 equivalentEffectiveBalance 总计
+   */
+  private grandTotal(): number {
+    let sum = 0;
+    for (let acc of this.accounts) {
+      if (!acc.excludeFromTotals) {
+        sum += acc.currentBalance;
+      }
+    }
+    return sum;
+  }
+
+  private grandTotalLabel(): string {
+    const symbol = this.accounts.length > 0 ? currencyByCode(this.accounts[0].currency).symbol : '¥';
+    return `${symbol}${formatMoney(this.grandTotal(), 2)}`;
   }
 
   build() {
@@ -111,48 +136,54 @@ export struct AccountListPage {
         .layoutWeight(1)
       } else if (this.groupSingle()) {
         // 单分组时用扁平 List（支持拖拽排序）
-        List({ space: 0 }) {
-          ForEach(this.accounts, (acc: Account) => {
-            ListItem() {
-              AccountRow({
-                account: acc,
-                selected: acc.id === this.selectedAccountId,
-                expanded: acc.id === this.expandedId,
-                showEquivalent: this.showEquivalent,
-                onToggle: (id: number) => {
-                  animateTo({ duration: 200, curve: Curve.EaseInOut }, () => {
-                    this.expandedId = this.expandedId === id ? -1 : id;
-                  });
-                },
-                onNavigate: (id: number) => {
-                  this.onSelect(id);
-                },
-                onEdit: (id: number) => {
-                  this.onEdit(id);
-                },
-                onDelete: (id: number) => {
-                  this.onDelete(id);
-                },
-                onToggleSealed: (id: number) => {
-                  this.onToggleSealed(id);
-                },
-                onToggleExclude: (id: number) => {
-                  this.onToggleExclude(id);
-                },
-                onSetFlag: (id: number) => {
-                  this.onSetFlag(id);
-                }
-              })
-            }
-          }, (acc: Account) => `account_${acc.id}_${acc.sealed}_${acc.excludeFromTotals}_${acc.flagId}`)
+        // 顶部显示"累计"加粗行（对齐安卓 grand total，放 List 外避免影响拖拽索引）
+        Column() {
+          this.grandTotalHeader()
+          List({ space: 0 }) {
+            ForEach(this.accounts, (acc: Account) => {
+              ListItem() {
+                AccountRow({
+                  account: acc,
+                  selected: acc.id === this.selectedAccountId,
+                  expanded: acc.id === this.expandedId,
+                  showEquivalent: this.showEquivalent,
+                  onToggle: (id: number) => {
+                    animateTo({ duration: 200, curve: Curve.EaseInOut }, () => {
+                      this.expandedId = this.expandedId === id ? -1 : id;
+                    });
+                  },
+                  onNavigate: (id: number) => {
+                    this.onSelect(id);
+                  },
+                  onEdit: (id: number) => {
+                    this.onEdit(id);
+                  },
+                  onDelete: (id: number) => {
+                    this.onDelete(id);
+                  },
+                  onToggleSealed: (id: number) => {
+                    this.onToggleSealed(id);
+                  },
+                  onToggleExclude: (id: number) => {
+                    this.onToggleExclude(id);
+                  },
+                  onSetFlag: (id: number) => {
+                    this.onSetFlag(id);
+                  }
+                })
+              }
+            }, (acc: Account) => `account_${acc.id}_${acc.sealed}_${acc.excludeFromTotals}_${acc.flagId}`)
+          }
+          .layoutWeight(1)
+          .width('100%')
+          .editMode(this.dragEditMode)
+          .onItemMove((from: number, to: number) => {
+            this.onReorder(from, to);
+            return true;
+          })
         }
         .layoutWeight(1)
         .width('100%')
-        .editMode(this.dragEditMode)
-        .onItemMove((from: number, to: number) => {
-          this.onReorder(from, to);
-          return true;
-        })
       } else {
         List({ space: 0 }) {
           // 分组渲染
@@ -208,6 +239,11 @@ export struct AccountListPage {
               }
             }
           }, (groupKey: string) => `group_${groupKey}`)
+
+          // 底部"累计"总计行（对齐安卓 grouped.size > 1 时的 Grand total）
+          ListItem() {
+            this.grandTotalHeader()
+          }
         }
         .layoutWeight(1)
         .width('100%')
@@ -231,5 +267,40 @@ export struct AccountListPage {
     }
     const symbol = list.length > 0 ? currencyByCode(list[0].currency).symbol : '¥';
     return `${symbol}${formatMoney(sum, 2)}`;
+  }
+
+  /**
+   * 累计行：对应安卓 HeaderV2（isGrandTotal = true）
+   * 标题加粗，右侧显示全部账户等效余额合计
+   * 点击跳转到交易页全部账户累计（对齐安卓 onNavigate = onGroupSelected(null)）
+   */
+  @Builder
+  grandTotalHeader() {
+    Row() {
+      Text('累计')
+        .fontSize(13)
+        .fontColor($r('app.color.textSecondary'))
+        .fontWeight(FontWeight.Bold)
+      Blank()
+      Text(this.grandTotalLabel())
+        .fontSize(13)
+        .fontWeight(FontWeight.Bold)
+        .fontColor($r('app.color.textPrimary'))
+      // 右侧箭头：对齐安卓 HeaderV2 的 ChevronRight IconButton，点击跳转交易页累计
+      Image($r('sys.media.ohos_ic_public_arrow_right'))
+        .width(16)
+        .height(16)
+        .objectFit(ImageFit.Contain)
+        .opacity(0.5)
+        .margin({ left: 4 })
+        .onClick(() => {
+          this.onGrandTotal();
+        })
+    }
+    .width('100%')
+    .padding({ left: 16, right: 12, top: 10, bottom: 6 })
+    .onClick(() => {
+      this.onGrandTotal();
+    })
   }
 }

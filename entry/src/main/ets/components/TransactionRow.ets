@@ -10,6 +10,8 @@ import { currencyByCode } from '../model/CurrencyUnit';
 export struct TransactionRow {
   transaction: Transaction = new Transaction();
   @Prop selected: boolean = false;
+  // 聚合模式（全部账户）：显示所属账户名（对齐安卓 transaction.accountLabel 行）
+  @Prop showAccount: boolean = false;
   onToggleStatus: (id: number) => void = () => {
   };
   onItemLongPress: (id: number) => void = () => {
@@ -126,6 +128,15 @@ export struct TransactionRow {
 
       // 主信息
       Column({ space: 2 }) {
+        // 聚合模式显示账户名（对齐安卓：非转账且 accountLabel != null 时显示账户行）
+        if (this.showAccount && !this.transaction.isTransfer() && this.transaction.accountLabel.length > 0) {
+          Text(this.transaction.accountLabel)
+            .fontSize(11)
+            .fontColor($r('app.color.textSecondary'))
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .width('100%')
+        }
         Text(this.primaryText())
           .fontSize(15)
           .fontWeight(FontWeight.Medium)

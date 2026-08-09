@@ -9,7 +9,8 @@ import { currencyByCode } from '../model/CurrencyUnit';
  */
 @Component
 export struct AccountRow {
-  account: Account = new Account();
+  // @Prop 建立单向响应式：父组件更新 accounts 后本组件立即重渲染
+  @Prop account: Account = new Account();
   @Prop selected: boolean = false;
   @Prop expanded: boolean = false;
   @Prop showEquivalent: boolean = false;
@@ -124,6 +125,10 @@ export struct AccountRow {
           .objectFit(ImageFit.Contain)
           .opacity(0.5)
           .margin({ left: 4 })
+          .onClick(() => {
+            // 点击箭头跳转到交易页显示该账户收支详情（对齐安卓 AccountCard onSelected）
+            this.onNavigate(this.account.id);
+          })
       }
       .width('100%')
       .height(48)
@@ -151,13 +156,17 @@ export struct AccountRow {
           this.sumRow('当前余额', formatMoney(this.account.currentBalance, this.fractionDigits()), this.balanceColor(), true)
 
           // 操作按钮行（对齐安卓账户操作）
+          // 关闭账户后隐藏"编辑"（对齐安卓 accountMenu: if (!account.sealed) { add(edit) }，
+          // sealed 账户不可编辑，需先解除关闭再编辑）
           Row({ space: 16 }) {
-            Text('编辑')
-              .fontSize(13)
-              .fontColor($r('app.color.primaryColor'))
-              .onClick(() => {
-                this.onEdit(this.account.id);
-              })
+            if (!this.account.sealed) {
+              Text('编辑')
+                .fontSize(13)
+                .fontColor($r('app.color.primaryColor'))
+                .onClick(() => {
+                  this.onEdit(this.account.id);
+                })
+            }
             Text('标记')
               .fontSize(13)
               .fontColor($r('app.color.primaryColor'))

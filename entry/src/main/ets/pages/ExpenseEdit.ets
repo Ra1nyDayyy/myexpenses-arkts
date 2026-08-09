@@ -84,7 +84,7 @@ struct ExpenseEdit {
     if (params && params['accountId'] !== undefined) {
       this.accountId = params['accountId'] as number;
     }
-    // 交易类型预选（FAB 菜单传入）：-1 支出 / 1 收入 / 2 转账
+    // 交易类型预选（FAB 菜单传入）：-1 支出 / 1 收入 / 2 转账 / 3 拆分
     if (params && params['type'] !== undefined) {
       const t = params['type'] as number;
       if (t === 1) {
@@ -92,6 +92,9 @@ struct ExpenseEdit {
         this.operationType = OperationType.TRANSACTION;
       } else if (t === 2) {
         this.operationType = OperationType.TRANSFER;
+      } else if (t === 3) {
+        this.isIncome = false;
+        this.operationType = OperationType.SPLIT;
       } else {
         this.isIncome = false;
         this.operationType = OperationType.TRANSACTION;

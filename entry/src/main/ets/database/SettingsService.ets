@@ -77,4 +77,5 @@ export class PREF_KEY {
   static readonly AI_ANALYSIS_TIME: string = 'ai_analysis_time';
   static readonly THEME: string = 'theme'; // 0 跟随系统 1 浅色 2 深色
   static readonly LANGUAGE: string = 'language';
+  static readonly LAST_ACTION: string = 'last_action'; // 交易页 FAB 记住的上次操作：-1 支出 / 1 收入 / 2 转账
 }
