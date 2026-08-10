@@ -1,13 +1,30 @@
 import { Account, AccountType } from '../model/Account';
 import { Repository } from '../database/Repository';
 import { PageHeader } from '../components/PageHeader';
-import { router, promptAction } from '@kit.ArkUI';
+import { router, promptAction, componentUtils } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
 import { formatMoney } from '../model/Money';
 import { currencyByCode } from '../model/CurrencyUnit';
 import { formatDate } from '../common/FormatUtils';
 import { buildImagePdf, base64DataUrlToBytes } from '../common/PdfGenerator';
+
+/** 图表高亮信息（对齐安卓 Triple<Boolean, Int, Long?>：是否内环/环内索引/账户id） */
+interface HighlightInfo {
+  inner: boolean;
+  index: number;
+  id: number;
+}
+
+/** 双环几何参数（绘制与命中检测共用） */
+interface ChartGeom {
+  cx: number;
+  cy: number;
+  outerR: number;
+  outerInnerR: number;
+  innerR: number;
+  innerInnerR: number;
+}
 
 /**
  * 资产负债表：对齐 Android activity/BalanceSheet.kt
@@ -29,11 +46,18 @@ struct BalanceSheet {
   @State exporting: boolean = false;
   /** 显示双环甜甜圈图（对齐安卓 BalanceSheetOptions 图表开关） */
   @State showChart: boolean = false;
-  /** 双环图渲染结果（OffscreenCanvas dataURL，随数据/显示开关刷新） */
-  @State chartDataUrl: string = '';
+  /** 高亮的扇区：inner=是否负债环, index=环内索引, id=账户 id（对齐安卓 highlight: Triple<Boolean, Int, Long?>） */
+  @State highlight: HighlightInfo | null = null;
+  /** 图表 Canvas 尺寸（onReady 后更新，用于命中检测） */
+  private chartWidth: number = 0;
+  private chartHeight: number = 0;
   date: number = Math.floor(Date.now() / 1000);
 
   private repository: Repository = Repository.getInstance();
+  private chartSettings: RenderingContextSettings = new RenderingContextSettings(true);
+  private chartContext: CanvasRenderingContext2D = new CanvasRenderingContext2D(this.chartSettings);
+  private scroller: Scroller = new Scroller();
+
 
 
   aboutToAppear(): void {
@@ -61,9 +85,9 @@ struct BalanceSheet {
     this.assets = assets;
     this.liabilities = liabilities;
     this.netWorth = assets + liabilities;
-    // 图表显示期间数据变化时同步刷新双环图
+    // 图表显示期间数据变化时同步重绘双环图
     if (this.showChart) {
-      this.chartDataUrl = this.renderChartDataUrl();
+      this.drawChart();
     }
   }
 
@@ -126,12 +150,30 @@ struct BalanceSheet {
     return '#' + rgb.toString(16).padStart(6, '0').toUpperCase();
   }
 
-  /** 绘制一个甜甜圈环（外环资产/内环负债），从顶部 -90° 顺时针分配 */
-  private drawDonutRing(ctx: OffscreenCanvasRenderingContext2D,
+  /** 环的几何参数（中心/内外半径），绘制与命中检测共用，保证一致性 */
+  private ringGeom(cx: number, cy: number, size: number): ChartGeom {
+    const outerR = size * 0.42;
+    const outerInnerR = size * 0.28;
+    const innerR = size * 0.24;
+    const innerInnerR = size * 0.10;
+    return {
+      cx: cx, cy: cy,
+      outerR: outerR, outerInnerR: outerInnerR,
+      innerR: innerR, innerInnerR: innerInnerR
+    } as ChartGeom;
+  }
+
+  /** 绘制一个甜甜圈环（外环资产/内环负债），从顶部 -90° 顺时针分配。
+   *  高亮扇区加白描边 + 该扇区颜色加深，环中心显示 label+百分比（对齐安卓 setCenterText）。 */
+  private drawDonutRing(ctx: CanvasRenderingContext2D,
     cx: number, cy: number, outerR: number, innerR: number,
-    accounts: Account[], totalAngle: number, isAsset: boolean): void {
+    accounts: Account[], totalAngle: number, isAsset: boolean, centerLabel: string, centerValue: string): void {
     const accounts2 = accounts.filter((a: Account) => a.currentBalance !== 0);
     const total = accounts2.reduce((s: number, a: Account) => s + Math.abs(a.currentBalance), 0);
+    let highlighted: number = -1;
+    if (this.highlight !== null && this.highlight.inner === !isAsset) {
+      highlighted = this.highlight.index;
+    }
     if (total <= 0) {
       // 无数据环：整环灰色占位
       ctx.beginPath();
@@ -143,47 +185,204 @@ struct BalanceSheet {
       return;
     }
     let start = -90;
+    let index = 0;
     for (const acc of accounts2) {
       const sweep = (Math.abs(acc.currentBalance) / total) * totalAngle;
       if (sweep <= 0) {
         continue;
       }
+      const isSel = index === highlighted;
       ctx.beginPath();
       ctx.arc(cx, cy, outerR, this.deg2rad(start), this.deg2rad(start + sweep));
       ctx.arc(cx, cy, innerR, this.deg2rad(start + sweep), this.deg2rad(start), true);
       ctx.closePath();
-      ctx.fillStyle = this.colorHex(acc.color);
+      ctx.fillStyle = isSel ? this.darkenColor(acc.color) : this.colorHex(acc.color);
       ctx.fill();
+      // 高亮扇区白描边（对齐安卓 PieChart 选中高亮）
+      if (isSel) {
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(cx, cy, outerR, this.deg2rad(start), this.deg2rad(start + sweep));
+        ctx.arc(cx, cy, innerR, this.deg2rad(start + sweep), this.deg2rad(start), true);
+        ctx.closePath();
+        ctx.stroke();
+      }
+      // 中心文字（对齐安卓 setCenterText：label + 百分比）
+      if (isSel) {
+        ctx.fillStyle = '#000000';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = 'bold 16px sans-serif';
+        ctx.fillText(centerLabel.length > 0 ? centerLabel : acc.label, cx, cy - 8);
+        ctx.font = '13px sans-serif';
+        ctx.fillStyle = '#666666';
+        ctx.fillText(centerValue.length > 0 ? centerValue : `${(Math.abs(acc.currentBalance) / total * 100).toFixed(1)}%`,
+          cx, cy + 14);
+      }
       start += sweep;
+      index++;
     }
   }
 
-  /** 用离屏 Canvas 渲染双环图 dataURL（供 ChartImage 展示，复用已验证的 OffscreenCanvas 链路） */
-  private renderChartDataUrl(): string {
-    const size = 640;
-    const canvas = new OffscreenCanvas(size, size);
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, size, size);
-    const cx = size / 2;
-    const cy = size / 2;
-    const angles = this.chartAngles();
-    const assetAngle = angles[0];
-    const liabAngle = angles[1];
-    // 外环（资产）与外环内径、内环（负债）外径、内环内径
-    const outerR = size * 0.42;
-    const outerInnerR = size * 0.28;
-    const innerR = size * 0.24;
-    const innerInnerR = size * 0.10;
-    this.drawDonutRing(ctx, cx, cy, outerR, outerInnerR, this.chartAccounts(true), assetAngle, true);
-    this.drawDonutRing(ctx, cx, cy, innerR, innerInnerR, this.chartAccounts(false), liabAngle, false);
-    return ctx.toDataURL('image/png', 0.9);
+  /** 颜色加深（高亮扇区，对齐安卓 PieChart 选中态视觉） */
+  private darkenColor(color: number): string {
+    const r = Math.max(0, ((color >> 16) & 0xFF) - 40);
+    const g = Math.max(0, ((color >> 8) & 0xFF) - 40);
+    const b = Math.max(0, (color & 0xFF) - 40);
+    return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0').toUpperCase();
   }
 
-  /** 切换图表显示（对齐安卓 showChartState.value 开关） */
+  /** 获取当前高亮账户（null 则无） */
+  private highlightAccount(): Account | null {
+    if (this.highlight === null) {
+      return null;
+    }
+    const list = this.chartAccounts(!this.highlight.inner);
+    const acc = list[this.highlight.index];
+    return acc === undefined ? null : acc;
+  }
+
+  /** 主绘制入口（Canvas onReady / 数据变化 / 高亮变化时调用） */
+  private drawChart(): void {
+    const ctx = this.chartContext;
+    if (this.chartWidth <= 0 || this.chartHeight <= 0) {
+      return;
+    }
+    const w = this.chartWidth;
+    const h = this.chartHeight;
+    ctx.clearRect(0, 0, w, h);
+    const cx = w / 2;
+    const cy = h / 2;
+    const size = Math.min(w, h);
+    const geom = this.ringGeom(cx, cy, size);
+    const angles = this.chartAngles();
+    // 中心文字：仅当该环被选中时显示（对齐安卓：另一环保留空白）
+    let assetLabel = '';
+    let assetValue = '';
+    let liabLabel = '';
+    let liabValue = '';
+    const selAcc = this.highlightAccount();
+    if (selAcc !== null && this.highlight !== null) {
+      const h = this.highlight;
+      const list = this.chartAccounts(!h.inner);
+      const total = list.reduce((s: number, a: Account) => s + Math.abs(a.currentBalance), 0);
+      const pct = `${(Math.abs(selAcc.currentBalance) / total * 100).toFixed(1)}%`;
+      if (h.inner) {
+        liabLabel = selAcc.label;
+        liabValue = pct;
+      } else {
+        assetLabel = selAcc.label;
+        assetValue = pct;
+      }
+    }
+    this.drawDonutRing(ctx, cx, cy, geom.outerR, geom.outerInnerR, this.chartAccounts(true), angles[0], true,
+      assetLabel, assetValue);
+    this.drawDonutRing(ctx, cx, cy, geom.innerR, geom.innerInnerR, this.chartAccounts(false), angles[1], false,
+      liabLabel, liabValue);
+  }
+
+  /** Canvas 点击命中检测：落在哪个环的哪个扇区（对齐安卓 onValueSelected/onNothingSelected） */
+  private onChartClick(event: ClickEvent): void {
+    if (this.chartWidth <= 0 || this.chartHeight <= 0) {
+      return;
+    }
+    const w = this.chartWidth;
+    const h = this.chartHeight;
+    const cx = w / 2;
+    const cy = h / 2;
+    const size = Math.min(w, h);
+    const geom = this.ringGeom(cx, cy, size);
+    const dx = event.x - cx;
+    const dy = event.y - cy;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    // 命中检测：优先内环（负债），其次外环（资产），中心/外部视为空白
+    const angles = this.chartAngles();
+    let hit: HighlightInfo | null = null;
+    // 内环范围
+    if (dist >= geom.innerInnerR && dist <= geom.innerR) {
+      const idx = this.hitSectorIndex(dx, dy, this.chartAccounts(false), angles[1]);
+      if (idx >= 0) {
+        const acc = this.chartAccounts(false)[idx];
+        hit = { inner: true, index: idx, id: acc.id } as HighlightInfo;
+      }
+    } else if (dist >= geom.outerInnerR && dist <= geom.outerR) {
+      const idx = this.hitSectorIndex(dx, dy, this.chartAccounts(true), angles[0]);
+      if (idx >= 0) {
+        const acc = this.chartAccounts(true)[idx];
+        hit = { inner: false, index: idx, id: acc.id } as HighlightInfo;
+      }
+    }
+    if (hit === null) {
+      // 点击空白：取消高亮（对齐安卓 onNothingSelected）
+      this.highlight = null;
+      this.drawChart();
+      return;
+    }
+    // 点击同一扇区：再次点击取消（对齐安卓 PieChart 再次点击取消高亮）
+    if (this.highlight !== null && this.highlight.inner === hit.inner && this.highlight.id === hit.id) {
+      this.highlight = null;
+      this.drawChart();
+      return;
+    }
+    this.highlight = hit;
+    this.drawChart();
+    // 滚动到对应账户行（对齐安卓 LaunchedEffect animateScrollToItem）
+    this.scrollToAccount(hit.id);
+  }
+
+  /** 计算点击角度落在某环的哪个扇区索引（从顶部 -90° 顺时针）；返回 -1 表示无效 */
+  private hitSectorIndex(dx: number, dy: number, accounts: Account[], totalAngle: number): number {
+    const list = accounts.filter((a: Account) => a.currentBalance !== 0);
+    const total = list.reduce((s: number, a: Account) => s + Math.abs(a.currentBalance), 0);
+    if (total <= 0 || totalAngle <= 0) {
+      return -1;
+    }
+    // 点击角度（deg，0 指向右、90 指向下），映射为从顶部 -90° 顺时针的偏移
+    let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+    if (angle < 0) {
+      angle += 360;
+    }
+    let offset = angle + 90; // 从顶部顺时针
+    if (offset >= 360) {
+      offset -= 360;
+    }
+    if (offset > totalAngle) {
+      return -1;
+    }
+    let acc = 0;
+    for (let i = 0; i < list.length; i++) {
+      acc += (Math.abs(list[i].currentBalance) / total) * totalAngle;
+      if (offset <= acc) {
+        return i;
+      }
+    }
+    return list.length - 1;
+  }
+
+  /** 滚动到账户行（对齐安卓 highlight LaunchedEffect animateScrollToItem） */
+  private scrollToAccount(id: number): void {
+    const acc = this.accounts.find((a: Account) => a.id === id);
+    if (!acc) {
+      return;
+    }
+    const rectId = `bs_acc_${acc.id}`;
+    const info = componentUtils.getRectangleById(rectId);
+    if (info && info.windowOffset) {
+      // 滚动到目标行接近顶部（减标题栏+安全区偏移），带动画
+      const y = info.windowOffset.y - 150;
+      this.scroller.scrollTo({ xOffset: 0, yOffset: Math.max(0, y), animation: { duration: 300 } });
+    }
+  }
+
+  /** 切换图表显示（对齐安卓 showChartState.value 开关，关闭时清空高亮） */
   private toggleChart(): void {
     this.showChart = !this.showChart;
-    if (this.showChart) {
-      this.chartDataUrl = this.renderChartDataUrl();
+    if (!this.showChart) {
+      this.highlight = null;
+    } else {
+      // Canvas 挂载后 onReady 会绘制；若已就绪立即绘制
+      this.drawChart();
     }
   }
 
@@ -261,8 +460,9 @@ struct BalanceSheet {
         title: (this.showHidden ? '✓ ' : '') + '显示隐藏账户',
         action: () => {
           this.showHidden = !this.showHidden;
+          this.highlight = null;
           if (this.showChart) {
-            this.chartDataUrl = this.renderChartDataUrl();
+            this.drawChart();
           }
         }
       } as SheetInfo);
@@ -272,8 +472,9 @@ struct BalanceSheet {
         title: (this.showZero ? '✓ ' : '') + '显示零余额账户',
         action: () => {
           this.showZero = !this.showZero;
+          this.highlight = null;
           if (this.showChart) {
-            this.chartDataUrl = this.renderChartDataUrl();
+            this.drawChart();
           }
         }
       } as SheetInfo);
@@ -465,7 +666,7 @@ struct BalanceSheet {
         }
       })
 
-      Scroll() {
+      Scroll(this.scroller) {
         Column() {
           // 日期（右上角带下划线，对齐安卓）
           Row() {
@@ -482,17 +683,24 @@ struct BalanceSheet {
           .width('100%')
           .padding({ top: 6, bottom: 2 })
 
-          // 双环甜甜圈图（对齐安卓 showChart 时图表在上、明细在下）
-          if (this.showChart && this.chartDataUrl.length > 0) {
+          // 双环甜甜圈图（对齐安卓 showChart 时图表在上、明细在下；Canvas 可点击扇区）
+          if (this.showChart) {
             Column() {
               Text('资产 / 负债分布')
                 .fontSize(14)
                 .fontColor($r('app.color.textSecondary'))
                 .margin({ top: 8, bottom: 8 })
-              Image(this.chartDataUrl)
+              Canvas(this.chartContext)
                 .width('70%')
                 .aspectRatio(1)
-                .objectFit(ImageFit.Contain)
+                .onReady(() => {
+                  this.chartWidth = this.chartContext.width;
+                  this.chartHeight = this.chartContext.height;
+                  this.drawChart();
+                })
+                .onClick((event: ClickEvent) => {
+                  this.onChartClick(event);
+                })
                 .margin({ bottom: 8 })
             }
             .width('100%')
@@ -587,6 +795,9 @@ struct BalanceSheet {
         }
         .width('100%')
         .padding({ top: 3, bottom: 3 })
+        .id(`bs_acc_${acc.id}`)
+        .backgroundColor(this.highlight !== null && this.highlight.id === acc.id
+          ? $r('app.color.primaryContainer') : Color.Transparent)
       }, (acc: Account) => `acc_${type}_${acc.id}`)
     }
     .width('100%')
