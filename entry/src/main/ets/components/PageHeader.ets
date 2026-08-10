@@ -8,11 +8,15 @@ export struct PageHeader {
   @Prop showBack: boolean = true;
   @Prop rightText: string = '';
   @Prop showMore: boolean = false;
+  /** 图表按钮（资产负债表右上角，对齐安卓 TooltipIconButton 图表开关） */
+  @Prop showChart: boolean = false;
   onBack: () => void = () => {
   };
   onRight: () => void = () => {
   };
   onMore: () => void = () => {
+  };
+  onChart: () => void = () => {
   };
 
   build() {
@@ -47,6 +51,18 @@ export struct PageHeader {
           .fontWeight(FontWeight.Medium)
           .onClick(() => {
             this.onRight();
+          })
+      }
+
+      // 图表按钮（资产负债表右上角，对齐安卓图表开关）
+      if (this.showChart) {
+        Image($r('app.media.ic_chart'))
+          .width(22)
+          .height(22)
+          .margin({ left: 16 })
+          .fillColor($r('app.color.textSecondary'))
+          .onClick(() => {
+            this.onChart();
           })
       }
 

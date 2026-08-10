@@ -27,9 +27,14 @@ struct BalanceSheet {
   @State showHidden: boolean = false;
   @State showZero: boolean = false;
   @State exporting: boolean = false;
+  /** 显示双环甜甜圈图（对齐安卓 BalanceSheetOptions 图表开关） */
+  @State showChart: boolean = false;
+  /** 双环图渲染结果（OffscreenCanvas dataURL，随数据/显示开关刷新） */
+  @State chartDataUrl: string = '';
   date: number = Math.floor(Date.now() / 1000);
 
   private repository: Repository = Repository.getInstance();
+
 
   aboutToAppear(): void {
     this.load();
@@ -56,12 +61,130 @@ struct BalanceSheet {
     this.assets = assets;
     this.liabilities = liabilities;
     this.netWorth = assets + liabilities;
-
+    // 图表显示期间数据变化时同步刷新双环图
+    if (this.showChart) {
+      this.chartDataUrl = this.renderChartDataUrl();
+    }
   }
 
   /** 主货币（对齐安卓 homeCurrencyUnit，鸿蒙无汇率换算，取首个账户货币） */
   private homeCurrency(): string {
     return this.accounts.length > 0 ? this.accounts[0].currency : 'CNY';
+  }
+
+  // ==================== 双环甜甜圈图（对齐安卓 BalanceSheetViewInner + RenderChart） ====================
+  // 外环：资产账户（按账户自身 color 着色）；内环：负债账户。
+  // 角度分配：资产/负债按总额比例分摊 360°，总额大者占满 360°（对齐安卓 angle/ratio 计算）。
+
+  /** 图表用账户：排除 excludeFromTotals，按 showHidden 过滤 sealed，余额不为 0（对齐安卓 effectiveBalance != 0） */
+  private chartAccounts(isAsset: boolean): Account[] {
+    const types = isAsset
+      ? [AccountType.BANK, AccountType.CASH, AccountType.ASSET]
+      : [AccountType.CCARD, AccountType.LIABILITY];
+    return this.accounts.filter((a: Account) =>
+      types.indexOf(a.type) >= 0 &&
+      !a.excludeFromTotals &&
+      (this.showHidden || !a.sealed) &&
+      a.currentBalance !== 0);
+  }
+
+  /** 总资产（图表用：正数）；对齐安卓 totalAssets */
+  private chartTotalAssets(): number {
+    return this.chartAccounts(true).reduce((s: number, a: Account) => s + Math.abs(a.currentBalance), 0);
+  }
+
+  /** 总负债绝对值（图表用）；对齐安卓 totalLiabilities（负数）取绝对值 */
+  private chartTotalLiabilities(): number {
+    return this.chartAccounts(false).reduce((s: number, a: Account) => s + Math.abs(a.currentBalance), 0);
+  }
+
+  /** 双环角度：返回 [资产环角度, 负债环角度]，对齐安卓 angle 计算 */
+  private chartAngles(): [number, number] {
+    const totalAssets = this.chartTotalAssets();
+    const totalLiabilities = this.chartTotalLiabilities();
+    if (totalAssets > 0 && totalLiabilities > 0) {
+      const ratio = totalAssets / totalLiabilities;
+      if (ratio > 1) {
+        return [360, 360 / ratio];
+      } else {
+        return [360 * ratio, 360];
+      }
+    } else if (totalLiabilities <= 0) {
+      return [360, 0];
+    } else {
+      return [0, 360];
+    }
+  }
+
+  private deg2rad(deg: number): number {
+    return deg * Math.PI / 180;
+  }
+
+  /** 账户颜色 0xAARRGGBB → '#RRGGBB' */
+  private colorHex(color: number): string {
+    const rgb = color & 0xFFFFFF;
+    return '#' + rgb.toString(16).padStart(6, '0').toUpperCase();
+  }
+
+  /** 绘制一个甜甜圈环（外环资产/内环负债），从顶部 -90° 顺时针分配 */
+  private drawDonutRing(ctx: OffscreenCanvasRenderingContext2D,
+    cx: number, cy: number, outerR: number, innerR: number,
+    accounts: Account[], totalAngle: number, isAsset: boolean): void {
+    const accounts2 = accounts.filter((a: Account) => a.currentBalance !== 0);
+    const total = accounts2.reduce((s: number, a: Account) => s + Math.abs(a.currentBalance), 0);
+    if (total <= 0) {
+      // 无数据环：整环灰色占位
+      ctx.beginPath();
+      ctx.arc(cx, cy, outerR, 0, Math.PI * 2);
+      ctx.arc(cx, cy, innerR, Math.PI * 2, 0, true);
+      ctx.closePath();
+      ctx.fillStyle = isAsset ? '#E0E0E0' : '#F0F0F0';
+      ctx.fill();
+      return;
+    }
+    let start = -90;
+    for (const acc of accounts2) {
+      const sweep = (Math.abs(acc.currentBalance) / total) * totalAngle;
+      if (sweep <= 0) {
+        continue;
+      }
+      ctx.beginPath();
+      ctx.arc(cx, cy, outerR, this.deg2rad(start), this.deg2rad(start + sweep));
+      ctx.arc(cx, cy, innerR, this.deg2rad(start + sweep), this.deg2rad(start), true);
+      ctx.closePath();
+      ctx.fillStyle = this.colorHex(acc.color);
+      ctx.fill();
+      start += sweep;
+    }
+  }
+
+  /** 用离屏 Canvas 渲染双环图 dataURL（供 ChartImage 展示，复用已验证的 OffscreenCanvas 链路） */
+  private renderChartDataUrl(): string {
+    const size = 640;
+    const canvas = new OffscreenCanvas(size, size);
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, size, size);
+    const cx = size / 2;
+    const cy = size / 2;
+    const angles = this.chartAngles();
+    const assetAngle = angles[0];
+    const liabAngle = angles[1];
+    // 外环（资产）与外环内径、内环（负债）外径、内环内径
+    const outerR = size * 0.42;
+    const outerInnerR = size * 0.28;
+    const innerR = size * 0.24;
+    const innerInnerR = size * 0.10;
+    this.drawDonutRing(ctx, cx, cy, outerR, outerInnerR, this.chartAccounts(true), assetAngle, true);
+    this.drawDonutRing(ctx, cx, cy, innerR, innerInnerR, this.chartAccounts(false), liabAngle, false);
+    return ctx.toDataURL('image/png', 0.9);
+  }
+
+  /** 切换图表显示（对齐安卓 showChartState.value 开关） */
+  private toggleChart(): void {
+    this.showChart = !this.showChart;
+    if (this.showChart) {
+      this.chartDataUrl = this.renderChartDataUrl();
+    }
   }
 
   private symbol(): string {
@@ -138,6 +261,9 @@ struct BalanceSheet {
         title: (this.showHidden ? '✓ ' : '') + '显示隐藏账户',
         action: () => {
           this.showHidden = !this.showHidden;
+          if (this.showChart) {
+            this.chartDataUrl = this.renderChartDataUrl();
+          }
         }
       } as SheetInfo);
     }
@@ -146,6 +272,9 @@ struct BalanceSheet {
         title: (this.showZero ? '✓ ' : '') + '显示零余额账户',
         action: () => {
           this.showZero = !this.showZero;
+          if (this.showChart) {
+            this.chartDataUrl = this.renderChartDataUrl();
+          }
         }
       } as SheetInfo);
     }
@@ -324,11 +453,15 @@ struct BalanceSheet {
       PageHeader({
         title: '资产负债表',
         showMore: true,
+        showChart: true,
         onBack: () => {
           router.back();
         },
         onMore: () => {
           this.showOptionsMenu();
+        },
+        onChart: () => {
+          this.toggleChart();
         }
       })
 
@@ -348,6 +481,23 @@ struct BalanceSheet {
           }
           .width('100%')
           .padding({ top: 6, bottom: 2 })
+
+          // 双环甜甜圈图（对齐安卓 showChart 时图表在上、明细在下）
+          if (this.showChart && this.chartDataUrl.length > 0) {
+            Column() {
+              Text('资产 / 负债分布')
+                .fontSize(14)
+                .fontColor($r('app.color.textSecondary'))
+                .margin({ top: 8, bottom: 8 })
+              Image(this.chartDataUrl)
+                .width('70%')
+                .aspectRatio(1)
+                .objectFit(ImageFit.Contain)
+                .margin({ bottom: 8 })
+            }
+            .width('100%')
+            .alignItems(HorizontalAlign.Center)
+          }
 
           Column({ space: 0 }) {
             // 资产章节（对齐安卓 BalanceSheetSectionHeaderView）
