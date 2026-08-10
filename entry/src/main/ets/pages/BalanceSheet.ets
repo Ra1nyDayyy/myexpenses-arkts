@@ -151,12 +151,13 @@ struct BalanceSheet {
   }
 
   /** 环的几何参数（中心/内外半径），绘制与命中检测共用，保证一致性。
-   *  环径整体缩小，为扇区外部标签（对齐安卓 OUTSIDE_SLICE 标签）预留空间 */
+   *  对齐安卓：外环保留带 outerR 接近图表半径一半（fillMaxSize(0.95)+holeRadius 85），
+   *  内环保留带较小（fillMaxSize(0.75)+holeRadius 75），两环保留带间留空隙，中心为洞。 */
   private ringGeom(cx: number, cy: number, size: number): ChartGeom {
-    const outerR = size * 0.34;
-    const outerInnerR = size * 0.225;
-    const innerR = size * 0.185;
-    const innerInnerR = size * 0.085;
+    const outerR = size * 0.42;
+    const outerInnerR = size * 0.33;
+    const innerR = size * 0.28;
+    const innerInnerR = size * 0.20;
     return {
       cx: cx, cy: cy,
       outerR: outerR, outerInnerR: outerInnerR,
@@ -189,6 +190,9 @@ struct BalanceSheet {
     let index = 0;
     // 扇区分割缝：扇区首尾各缩 sliceHalf 角度，同色扇区间留出白色缝隙（对齐安卓 sliceSpace=2f）
     const sliceHalf = 1;
+    // 标签链式保留（对齐安卓 Selector.shouldDrawEntry）：value>1% 或 前一个扇区>1% 都绘制，
+    // 保证小扇区标签不因阈值被孤立丢弃（初始视为前一个>1%，首个小扇区也绘制）
+    let lastGreaterThanOne = true;
     for (const acc of accounts2) {
       const sweep = (Math.abs(acc.currentBalance) / total) * totalAngle;
       if (sweep <= 0) {
@@ -227,10 +231,12 @@ struct BalanceSheet {
         ctx.fillText(centerValue.length > 0 ? centerValue : `${(Math.abs(acc.currentBalance) / total * 100).toFixed(1)}%`,
           cx, cy + 14);
       }
-      // 扇区外部标签：占比 >= 1% 才绘制（对齐安卓 shouldDrawEntry value > 1f 链式保留）
-      if (Math.abs(acc.currentBalance) / total * 100 >= 1) {
+      // 扇区外部标签：链式保留（>1% 或 前一个>1%），小扇区标签不被孤立丢弃（对齐安卓 Selector）
+      const greaterThanOne = Math.abs(acc.currentBalance) / total * 100 > 1;
+      if (greaterThanOne || lastGreaterThanOne) {
         this.drawSectorLabel(ctx, cx, cy, outerR, start, sweep, acc.label);
       }
+      lastGreaterThanOne = greaterThanOne;
       start += sweep;
       index++;
     }
@@ -247,10 +253,11 @@ struct BalanceSheet {
     // 折线：pt0（环外缘）→ pt1（外展点，对应 valueLinePart1）→ pt2（水平展开端点）
     const pt0x = outerR * dirX + cx;
     const pt0y = outerR * dirY + cy;
-    const line2R = outerR * 1.18;
+    // 环放大后外展空间有限，外展系数取 1.13、水平展开取 0.08，保证折线端点在画布内
+    const line2R = outerR * 1.13;
     const pt1x = line2R * dirX + cx;
     const pt1y = line2R * dirY + cy;
-    const polyW = outerR * 0.1; // 对应 valueLinePart2Length=0.1f
+    const polyW = outerR * 0.08; // 对应 valueLinePart2Length=0.1f
     const offset = 5;           // 对应 convertDpToPixel(5f)
     let pt2x = pt1x;
     let pt2y = pt1y;
@@ -283,9 +290,13 @@ struct BalanceSheet {
       textW = label.length * 9;
     }
     if (textAlign === 'right') {
-      lx = Math.max(lx, 4);
+      // 左侧标签：保证文本右缘不越左界、左缘不越出画布（避免长标签被左边缘裁剪）
+      lx = Math.max(lx, textW + 4);
+      lx = Math.min(lx, this.chartWidth - 4);
     } else {
+      // 右侧标签：保证文本右缘不越出画布
       lx = Math.min(lx, this.chartWidth - textW - 4);
+      lx = Math.max(lx, 4);
     }
     ctx.fillText(label, lx, pt2y);
   }
@@ -756,7 +767,7 @@ struct BalanceSheet {
                 .fontColor($r('app.color.textSecondary'))
                 .margin({ top: 8, bottom: 8 })
               Canvas(this.chartContext)
-                .width('70%')
+                .width('92%')
                 .aspectRatio(1)
                 .onReady(() => {
                   this.chartWidth = this.chartContext.width;
