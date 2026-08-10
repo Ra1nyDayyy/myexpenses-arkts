@@ -224,12 +224,12 @@ struct BalanceSheet {
         ctx.fillStyle = '#000000';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.font = 'bold 16px sans-serif';
-        ctx.fillText(centerLabel.length > 0 ? centerLabel : acc.label, cx, cy - 8);
-        ctx.font = '13px sans-serif';
+        ctx.font = 'bold 20px sans-serif';
+        ctx.fillText(centerLabel.length > 0 ? centerLabel : acc.label, cx, cy - 11);
+        ctx.font = '16px sans-serif';
         ctx.fillStyle = '#666666';
         ctx.fillText(centerValue.length > 0 ? centerValue : `${(Math.abs(acc.currentBalance) / total * 100).toFixed(1)}%`,
-          cx, cy + 14);
+          cx, cy + 17);
       }
       // 扇区外部标签：链式保留（>1% 或 前一个>1%），小扇区标签不被孤立丢弃（对齐安卓 Selector）
       const greaterThanOne = Math.abs(acc.currentBalance) / total * 100 > 1;
@@ -278,7 +278,7 @@ struct BalanceSheet {
     ctx.lineTo(pt2x, pt2y);
     ctx.stroke();
     ctx.fillStyle = '#333333';
-    ctx.font = '14px sans-serif';
+    ctx.font = '18px sans-serif';
     ctx.textBaseline = 'middle';
     ctx.textAlign = textAlign;
     // 文字起点（右对齐时 pt2x 为文本右缘；左对齐时 pt2x 为文本左缘），并防止超出画布
@@ -287,7 +287,7 @@ struct BalanceSheet {
     try {
       textW = ctx.measureText(label).width;
     } catch (e) {
-      textW = label.length * 9;
+      textW = label.length * 11;
     }
     if (textAlign === 'right') {
       // 左侧标签：保证文本右缘不越左界、左缘不越出画布（避免长标签被左边缘裁剪）
