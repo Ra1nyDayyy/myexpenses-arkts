@@ -150,12 +150,13 @@ struct BalanceSheet {
     return '#' + rgb.toString(16).padStart(6, '0').toUpperCase();
   }
 
-  /** 环的几何参数（中心/内外半径），绘制与命中检测共用，保证一致性 */
+  /** 环的几何参数（中心/内外半径），绘制与命中检测共用，保证一致性。
+   *  环径整体缩小，为扇区外部标签（对齐安卓 OUTSIDE_SLICE 标签）预留空间 */
   private ringGeom(cx: number, cy: number, size: number): ChartGeom {
-    const outerR = size * 0.42;
-    const outerInnerR = size * 0.28;
-    const innerR = size * 0.24;
-    const innerInnerR = size * 0.10;
+    const outerR = size * 0.34;
+    const outerInnerR = size * 0.225;
+    const innerR = size * 0.185;
+    const innerInnerR = size * 0.085;
     return {
       cx: cx, cy: cy,
       outerR: outerR, outerInnerR: outerInnerR,
@@ -186,15 +187,21 @@ struct BalanceSheet {
     }
     let start = -90;
     let index = 0;
+    // 扇区分割缝：扇区首尾各缩 sliceHalf 角度，同色扇区间留出白色缝隙（对齐安卓 sliceSpace=2f）
+    const sliceHalf = 1;
     for (const acc of accounts2) {
       const sweep = (Math.abs(acc.currentBalance) / total) * totalAngle;
       if (sweep <= 0) {
         continue;
       }
+      // 小扇区缝不超扇区一半，避免出现负弧
+      const gap = Math.min(sliceHalf, sweep / 2);
+      const s0 = start + gap;
+      const s1 = start + sweep - gap;
       const isSel = index === highlighted;
       ctx.beginPath();
-      ctx.arc(cx, cy, outerR, this.deg2rad(start), this.deg2rad(start + sweep));
-      ctx.arc(cx, cy, innerR, this.deg2rad(start + sweep), this.deg2rad(start), true);
+      ctx.arc(cx, cy, outerR, this.deg2rad(s0), this.deg2rad(s1));
+      ctx.arc(cx, cy, innerR, this.deg2rad(s1), this.deg2rad(s0), true);
       ctx.closePath();
       ctx.fillStyle = isSel ? this.darkenColor(acc.color) : this.colorHex(acc.color);
       ctx.fill();
@@ -203,8 +210,8 @@ struct BalanceSheet {
         ctx.strokeStyle = '#FFFFFF';
         ctx.lineWidth = 4;
         ctx.beginPath();
-        ctx.arc(cx, cy, outerR, this.deg2rad(start), this.deg2rad(start + sweep));
-        ctx.arc(cx, cy, innerR, this.deg2rad(start + sweep), this.deg2rad(start), true);
+        ctx.arc(cx, cy, outerR, this.deg2rad(s0), this.deg2rad(s1));
+        ctx.arc(cx, cy, innerR, this.deg2rad(s1), this.deg2rad(s0), true);
         ctx.closePath();
         ctx.stroke();
       }
@@ -220,9 +227,67 @@ struct BalanceSheet {
         ctx.fillText(centerValue.length > 0 ? centerValue : `${(Math.abs(acc.currentBalance) / total * 100).toFixed(1)}%`,
           cx, cy + 14);
       }
+      // 扇区外部标签：占比 >= 1% 才绘制（对齐安卓 shouldDrawEntry value > 1f 链式保留）
+      if (Math.abs(acc.currentBalance) / total * 100 >= 1) {
+        this.drawSectorLabel(ctx, cx, cy, outerR, start, sweep, acc.label);
+      }
       start += sweep;
       index++;
     }
+  }
+
+  /** 扇区外部标签：折线（环外缘→外展点→水平端点）+ 账户名（对齐安卓 OUTSIDE_SLICE 的 value line）。
+   *  标签方向：扇区中点角度在 90°~270° 时向左展开（右对齐），否则向右展开（左对齐）。 */
+  private drawSectorLabel(ctx: CanvasRenderingContext2D,
+    cx: number, cy: number, outerR: number, start: number, sweep: number, label: string): void {
+    const mid = start + sweep / 2;
+    const midRad = this.deg2rad(mid);
+    const dirX = Math.cos(midRad);
+    const dirY = Math.sin(midRad);
+    // 折线：pt0（环外缘）→ pt1（外展点，对应 valueLinePart1）→ pt2（水平展开端点）
+    const pt0x = outerR * dirX + cx;
+    const pt0y = outerR * dirY + cy;
+    const line2R = outerR * 1.18;
+    const pt1x = line2R * dirX + cx;
+    const pt1y = line2R * dirY + cy;
+    const polyW = outerR * 0.1; // 对应 valueLinePart2Length=0.1f
+    const offset = 5;           // 对应 convertDpToPixel(5f)
+    let pt2x = pt1x;
+    let pt2y = pt1y;
+    let textAlign: CanvasTextAlign = 'left';
+    const normMid = ((mid % 360) + 360) % 360;
+    if (normMid >= 90 && normMid <= 270) {
+      pt2x = pt1x - polyW;
+      textAlign = 'right';
+    } else {
+      pt2x = pt1x + polyW;
+      textAlign = 'left';
+    }
+    ctx.strokeStyle = '#9E9E9E';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(pt0x, pt0y);
+    ctx.lineTo(pt1x, pt1y);
+    ctx.lineTo(pt2x, pt2y);
+    ctx.stroke();
+    ctx.fillStyle = '#333333';
+    ctx.font = '14px sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = textAlign;
+    // 文字起点（右对齐时 pt2x 为文本右缘；左对齐时 pt2x 为文本左缘），并防止超出画布
+    let lx = textAlign === 'right' ? pt2x - offset : pt2x + offset;
+    let textW = 0;
+    try {
+      textW = ctx.measureText(label).width;
+    } catch (e) {
+      textW = label.length * 9;
+    }
+    if (textAlign === 'right') {
+      lx = Math.max(lx, 4);
+    } else {
+      lx = Math.min(lx, this.chartWidth - textW - 4);
+    }
+    ctx.fillText(label, lx, pt2y);
   }
 
   /** 颜色加深（高亮扇区，对齐安卓 PieChart 选中态视觉） */
