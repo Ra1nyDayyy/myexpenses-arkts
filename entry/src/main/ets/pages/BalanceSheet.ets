@@ -381,6 +381,8 @@ struct BalanceSheet {
         }
         .width('100%')
       }
+      // 内容不足一屏时默认居中，显式置顶对齐安卓（内容紧贴标题栏下方）
+      .align(Alignment.Top)
       .layoutWeight(1)
     }
     .width('100%')
