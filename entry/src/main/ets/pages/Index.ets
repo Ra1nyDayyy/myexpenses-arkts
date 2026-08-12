@@ -50,6 +50,14 @@ struct Index {
   }
 
   onPageShow(): void {
+    // 资产负债表账户行点击后通过 AppStorage 传目标账户：返回时切换到该账户交易页（对齐安卓 onNavigate）
+    const target = AppStorage.get<number>('balanceSheetTargetAccountId');
+    if (target !== undefined && target !== null && target > 0) {
+      AppStorage.delete('balanceSheetTargetAccountId');
+      this.selectedAccountId = target;
+      this.activeFilterType = -1;
+      this.selectedTab = 1;
+    }
     this.loadData();
   }
 
@@ -177,34 +185,25 @@ struct Index {
   }
 
   /**
-   * 账户过滤器菜单（对齐安卓 AccountFilterMenu）：
-   * 弹出 ActionSheet，包含"显示全部" + 各实际存在的账户类型，选中项打勾
+
+   * 账户过滤器下拉菜单项（对齐安卓 AccountFilterMenu）：bindMenu 在过滤器图标下方弹出，
+   * 显示全部 + 各账户类型（当前选中项带 ✓）
    */
-  private showAccountFilterMenu(): void {
-    const sheets: Array<SheetInfo> = [];
-    sheets.push({
-      title: this.activeFilterType < 0 ? '✓ 显示全部' : '显示全部',
+  private accountFilterMenuItems(): Array<MenuElement> {
+    const items: Array<MenuElement> = [];
+    items.push({
+      value: this.activeFilterType < 0 ? '✓ 显示全部' : '显示全部',
       action: () => this.setAccountFilter(-1)
-    } as SheetInfo);
+    } as MenuElement);
     const types = this.availableAccountTypes();
     for (const type of types) {
       const label = Account.typeName(type as AccountType);
-      sheets.push({
-        title: this.activeFilterType === type ? `✓ ${label}` : label,
+      items.push({
+        value: this.activeFilterType === type ? `✓ ${label}` : label,
         action: () => this.setAccountFilter(type)
-      } as SheetInfo);
+      } as MenuElement);
     }
-    const options: ActionSheetOptions = {
-      title: '账户筛选',
-      message: '按账户类型筛选交易（仅累计视图）',
-      confirm: {
-        value: '取消',
-        action: () => {
-        }
-      },
-      sheets: sheets
-    };
-    this.getUIContext().showActionSheet(options);
+    return items;
   }
 
   /**
@@ -1144,9 +1143,7 @@ struct Index {
             .width(20)
             .height(20)
             .fillColor(this.activeFilterType >= 0 ? $r('app.color.primaryColor') : $r('app.color.textSecondary'))
-            .onClick(() => {
-              this.showAccountFilterMenu();
-            })
+            .bindMenu(this.accountFilterMenuItems())
             .margin({ left: 4, right: 4 })
         }
         if (this.activeFilterType >= 0) {

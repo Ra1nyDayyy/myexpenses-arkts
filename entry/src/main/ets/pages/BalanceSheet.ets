@@ -51,6 +51,11 @@ struct BalanceSheet {
   /** 图表 Canvas 尺寸（onReady 后更新，用于命中检测） */
   private chartWidth: number = 0;
   private chartHeight: number = 0;
+  /** 双环整体旋转角度（度，顺时针），拖动旋转（对齐安卓 isRotationEnabled = ROTATION_INSIDE_ONLY） */
+  private chartRotation: number = 0;
+  /** 拖动起点信息：起始触摸角度 + 起始旋转角，用于计算旋转增量 */
+  private dragStartAngle: number = 0;
+  private dragStartRotation: number = 0;
   date: number = Math.floor(Date.now() / 1000);
 
   private repository: Repository = Repository.getInstance();
@@ -144,6 +149,63 @@ struct BalanceSheet {
     return deg * Math.PI / 180;
   }
 
+  /** 归一化角度到 [0, 360)。Canvas arc 传入远超 2π 的弧度参数时跨 360° 边界可能绘制异常，
+   *  多次旋转后 chartRotation 会累积成大角度，绘制前必须取模（对齐规范行为：跨 0° 时仍顺时针画弧）。 */
+  private normAngle(deg: number): number {
+    return ((deg % 360) + 360) % 360;
+  }
+
+  /** 填充一个甜甜圈扇区。扇区用连续角度（可能超 360° 或为负），内部拆段绘制，
+   *  保证每段 arc 不跨 360° 边界：鸿蒙 Canvas arc 遇到 startAngle>endAngle 或跨 2π
+   *  时会错误绘制补角大弧，导致扇区颜色被错误填充到整个圆环/中心洞。 */
+  private fillDonutSector(ctx: CanvasRenderingContext2D,
+    cx: number, cy: number, outerR: number, innerR: number,
+    s0: number, s1: number, fillStyle: string): void {
+    const segments = this.splitSweepSegments(s0, s1);
+    ctx.fillStyle = fillStyle;
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      ctx.beginPath();
+      ctx.arc(cx, cy, outerR, this.deg2rad(seg[0]), this.deg2rad(seg[1]));
+      ctx.arc(cx, cy, innerR, this.deg2rad(seg[1]), this.deg2rad(seg[0]), true);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  /** 高亮扇区白描边（与填充同一套拆段逻辑，保证路径一致） */
+  private strokeDonutSector(ctx: CanvasRenderingContext2D,
+    cx: number, cy: number, outerR: number, innerR: number,
+    s0: number, s1: number): void {
+    const segments = this.splitSweepSegments(s0, s1);
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 4;
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      ctx.beginPath();
+      ctx.arc(cx, cy, outerR, this.deg2rad(seg[0]), this.deg2rad(seg[1]));
+      ctx.arc(cx, cy, innerR, this.deg2rad(seg[1]), this.deg2rad(seg[0]), true);
+      ctx.closePath();
+      ctx.stroke();
+    }
+  }
+
+  /** 将连续角度扇区 [s0, s1] 拆分为若干不跨 360° 边界的分段 [[start,end], ...]，
+   *  每段均满足 0 <= start < end <= 360（弧跨 360° 时拆成 [start,360] + [0,end] 两段）。 */
+  private splitSweepSegments(s0: number, s1: number): number[][] {
+    const segments: number[][] = [];
+    let cur = this.normAngle(s0);
+    let remaining = s1 - s0; // 扇区总跨度（正数）
+    while (remaining > 0.0001) {
+      // 当前段起点 cur ∈ [0,360)，终点不超过 360
+      const segEnd = Math.min(360, cur + remaining);
+      segments.push([cur, segEnd]);
+      remaining -= (segEnd - cur);
+      cur = 0; // 若还有剩余，从 0° 继续下一段
+    }
+    return segments;
+  }
+
   /** 账户颜色 0xAARRGGBB → '#RRGGBB' */
   private colorHex(color: number): string {
     const rgb = color & 0xFFFFFF;
@@ -186,7 +248,7 @@ struct BalanceSheet {
       ctx.fill();
       return;
     }
-    let start = -90;
+    let start = -90 + this.chartRotation;
     let index = 0;
     // 扇区分割缝：扇区首尾各缩 sliceHalf 角度，同色扇区间留出白色缝隙（对齐安卓 sliceSpace=2f）
     const sliceHalf = 1;
@@ -200,36 +262,30 @@ struct BalanceSheet {
       }
       // 小扇区缝不超扇区一半，避免出现负弧
       const gap = Math.min(sliceHalf, sweep / 2);
+      // 扇区为连续角度（可能超 360 或为负），绘制时拆段保证 arc 不跨 360° 边界
       const s0 = start + gap;
       const s1 = start + sweep - gap;
       const isSel = index === highlighted;
-      ctx.beginPath();
-      ctx.arc(cx, cy, outerR, this.deg2rad(s0), this.deg2rad(s1));
-      ctx.arc(cx, cy, innerR, this.deg2rad(s1), this.deg2rad(s0), true);
-      ctx.closePath();
-      ctx.fillStyle = isSel ? this.darkenColor(acc.color) : this.colorHex(acc.color);
-      ctx.fill();
+      // 填充扇区（拆段：鸿蒙 Canvas arc 跨 360° 边界会绘制异常，导致颜色错误填充整个圆环）
+      this.fillDonutSector(ctx, cx, cy, outerR, innerR, s0, s1,
+        isSel ? this.darkenColor(acc.color) : this.colorHex(acc.color));
       // 高亮扇区白描边（对齐安卓 PieChart 选中高亮）
       if (isSel) {
-        ctx.strokeStyle = '#FFFFFF';
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.arc(cx, cy, outerR, this.deg2rad(s0), this.deg2rad(s1));
-        ctx.arc(cx, cy, innerR, this.deg2rad(s1), this.deg2rad(s0), true);
-        ctx.closePath();
-        ctx.stroke();
+        this.strokeDonutSector(ctx, cx, cy, outerR, innerR, s0, s1);
       }
       // 中心文字（对齐安卓 setCenterText：label + 百分比）
+      // 字号沿用外部标签 40px 经验值：Canvas px 受设备密度缩放，40px 实际渲染约 28px，
+      // 中心洞半径约 0.20*size，足够容纳放大后的两行文字
       if (isSel) {
         ctx.fillStyle = '#000000';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.font = 'bold 20px sans-serif';
-        ctx.fillText(centerLabel.length > 0 ? centerLabel : acc.label, cx, cy - 11);
-        ctx.font = '16px sans-serif';
+        ctx.font = 'bold 40px sans-serif';
+        ctx.fillText(centerLabel.length > 0 ? centerLabel : acc.label, cx, cy - 26);
+        ctx.font = '36px sans-serif';
         ctx.fillStyle = '#666666';
         ctx.fillText(centerValue.length > 0 ? centerValue : `${(Math.abs(acc.currentBalance) / total * 100).toFixed(1)}%`,
-          cx, cy + 17);
+          cx, cy + 16);
       }
       // 扇区外部标签：链式保留（>1% 或 前一个>1%），小扇区标签不被孤立丢弃（对齐安卓 Selector）
       const greaterThanOne = Math.abs(acc.currentBalance) / total * 100 > 1;
@@ -278,7 +334,8 @@ struct BalanceSheet {
     ctx.lineTo(pt2x, pt2y);
     ctx.stroke();
     ctx.fillStyle = '#333333';
-    ctx.font = '18px sans-serif';
+    // 账户名标签字号：Canvas px 单位受设备密度缩放，实测 24px 实际仅约16px，故放大至 40px
+    ctx.font = '40px sans-serif';
     ctx.textBaseline = 'middle';
     ctx.textAlign = textAlign;
     // 文字起点（右对齐时 pt2x 为文本右缘；左对齐时 pt2x 为文本左缘），并防止超出画布
@@ -287,7 +344,7 @@ struct BalanceSheet {
     try {
       textW = ctx.measureText(label).width;
     } catch (e) {
-      textW = label.length * 11;
+      textW = label.length * 22;
     }
     if (textAlign === 'right') {
       // 左侧标签：保证文本右缘不越左界、左缘不越出画布（避免长标签被左边缘裁剪）
@@ -407,6 +464,38 @@ struct BalanceSheet {
     this.scrollToAccount(hit.id);
   }
 
+  /** 拖动开始：记录起始触摸角度与旋转角（对齐安卓 ROTATION_INSIDE_ONLY，图表内部拖动旋转） */
+  private onRotateStart(event: GestureEvent): void {
+    const f = event.fingerList[0];
+    if (f === undefined || this.chartWidth <= 0) {
+      return;
+    }
+    const dx = f.localX - this.chartWidth / 2;
+    const dy = f.localY - this.chartHeight / 2;
+    this.dragStartAngle = Math.atan2(dy, dx) * 180 / Math.PI;
+    this.dragStartRotation = this.chartRotation;
+  }
+
+  /** 拖动更新：按触摸角度增量旋转圆环并重绘 */
+  private onRotateUpdate(event: GestureEvent): void {
+    const f = event.fingerList[0];
+    if (f === undefined || this.chartWidth <= 0) {
+      return;
+    }
+    const dx = f.localX - this.chartWidth / 2;
+    const dy = f.localY - this.chartHeight / 2;
+    const curAngle = Math.atan2(dy, dx) * 180 / Math.PI;
+    let delta = curAngle - this.dragStartAngle;
+    // 跨 ±180° 边界时归一化，避免旋转方向跳变
+    if (delta > 180) {
+      delta -= 360;
+    } else if (delta < -180) {
+      delta += 360;
+    }
+    this.chartRotation = this.dragStartRotation + delta;
+    this.drawChart();
+  }
+
   /** 计算点击角度落在某环的哪个扇区索引（从顶部 -90° 顺时针）；返回 -1 表示无效 */
   private hitSectorIndex(dx: number, dy: number, accounts: Account[], totalAngle: number): number {
     const list = accounts.filter((a: Account) => a.currentBalance !== 0);
@@ -419,10 +508,9 @@ struct BalanceSheet {
     if (angle < 0) {
       angle += 360;
     }
-    let offset = angle + 90; // 从顶部顺时针
-    if (offset >= 360) {
-      offset -= 360;
-    }
+    // 图表可拖动旋转（chartRotation 顺时针为正值），命中检测需减去旋转量
+    let offset = angle + 90 - this.chartRotation;
+    offset = ((offset % 360) + 360) % 360;
     if (offset > totalAngle) {
       return -1;
     }
@@ -742,78 +830,83 @@ struct BalanceSheet {
         }
       })
 
-      Scroll(this.scroller) {
-        Column() {
-          // 日期（右上角带下划线，对齐安卓）
-          Row() {
-            Blank()
-            Text(formatDate(this.date))
-              .fontSize(14)
-              .fontColor($r('app.color.primaryColor'))
-              .decoration({ type: TextDecorationType.Underline, color: $r('app.color.primaryColor') })
-              .padding({ right: 16 })
-              .onClick(() => {
-                this.showDatePicker();
-              })
-          }
-          .width('100%')
-          .padding({ top: 6, bottom: 2 })
-
-          // 双环甜甜圈图（对齐安卓 showChart 时图表在上、明细在下；Canvas 可点击扇区）
-          if (this.showChart) {
-            Column() {
-              Text('资产 / 负债分布')
-                .fontSize(14)
-                .fontColor($r('app.color.textSecondary'))
-                .margin({ top: 8, bottom: 8 })
-              Canvas(this.chartContext)
-                .width('92%')
-                .aspectRatio(1)
-                .onReady(() => {
-                  this.chartWidth = this.chartContext.width;
-                  this.chartHeight = this.chartContext.height;
-                  this.drawChart();
-                })
-                .onClick((event: ClickEvent) => {
-                  this.onChartClick(event);
-                })
-                .margin({ bottom: 8 })
-            }
-            .width('100%')
-            .alignItems(HorizontalAlign.Center)
-          }
-
-          Column({ space: 0 }) {
-            // 资产章节（对齐安卓 BalanceSheetSectionHeaderView）
-            this.chapterHeader('资产', true)
-            // 各资产类型小节
-            ForEach(this.assetSections(), (type: AccountType) => {
-              this.typeSection(type, true)
-            }, (type: AccountType) => `asset_section_${type}`)
-
-            Divider()
-              .color($r('app.color.dividerColor'))
-              .strokeWidth(0.5)
-              .margin({ top: 6, bottom: 6 })
-
-            // 负债章节
-            this.chapterHeader('负债', false)
-            ForEach(this.liabilitySections(), (type: AccountType) => {
-              this.typeSection(type, false)
-            }, (type: AccountType) => `liab_section_${type}`)
-
-            Divider()
-              .color($r('app.color.dividerColor'))
-              .strokeWidth(0.5)
-              .margin({ top: 6, bottom: 6 })
-
-            // 净资产（非绝对值，可为负）
-            this.chapterHeader('净资产', this.netWorth >= 0)
-          }
-          .width('100%')
-          .padding({ left: 16, right: 16, bottom: 24 })
+      // 固定区：日期 + 图表（不随明细滚动，对齐安卓：图表固定、明细 LazyColumn 滚动）
+      Column() {
+        // 日期（右上角带下划线，对齐安卓）
+        Row() {
+          Blank()
+          Text(formatDate(this.date))
+            .fontSize(14)
+            .fontColor($r('app.color.primaryColor'))
+            .decoration({ type: TextDecorationType.Underline, color: $r('app.color.primaryColor') })
+            .padding({ right: 16 })
+            .onClick(() => {
+              this.showDatePicker();
+            })
         }
         .width('100%')
+        .padding({ top: 6, bottom: 2 })
+
+        // 双环甜甜圈图（对齐安卓：图表固定不滚动，无"资产/负债分布"标题；Canvas 可点击扇区、可拖动旋转）
+        if (this.showChart) {
+          Canvas(this.chartContext)
+            .width('92%')
+            .aspectRatio(1)
+            .onReady(() => {
+              this.chartWidth = this.chartContext.width;
+              this.chartHeight = this.chartContext.height;
+              this.drawChart();
+            })
+            .onClick((event: ClickEvent) => {
+              this.onChartClick(event);
+            })
+            // 拖动旋转圆环（对齐安卓 isRotationEnabled = ROTATION_INSIDE_ONLY）
+            .gesture(
+              PanGesture({ fingers: 1, direction: PanDirection.All })
+                .onActionStart((event: GestureEvent) => {
+                  this.onRotateStart(event);
+                })
+                .onActionUpdate((event: GestureEvent) => {
+                  this.onRotateUpdate(event);
+                })
+            )
+            .margin({ top: 8, bottom: 8 })
+        }
+      }
+      .width('100%')
+      .alignItems(HorizontalAlign.Center)
+
+      // 明细（独立滚动，对齐安卓 LazyColumn）
+      Scroll(this.scroller) {
+        Column({ space: 0 }) {
+          // 资产章节（对齐安卓 BalanceSheetSectionHeaderView）
+          this.chapterHeader('资产', true)
+          // 各资产类型小节
+          ForEach(this.assetSections(), (type: AccountType) => {
+            this.typeSection(type, true)
+          }, (type: AccountType) => `asset_section_${type}`)
+
+          Divider()
+            .color($r('app.color.dividerColor'))
+            .strokeWidth(0.5)
+            .margin({ top: 6, bottom: 6 })
+
+          // 负债章节
+          this.chapterHeader('负债', false)
+          ForEach(this.liabilitySections(), (type: AccountType) => {
+            this.typeSection(type, false)
+          }, (type: AccountType) => `liab_section_${type}`)
+
+          Divider()
+            .color($r('app.color.dividerColor'))
+            .strokeWidth(0.5)
+            .margin({ top: 6, bottom: 6 })
+
+          // 净资产（非绝对值，可为负）
+          this.chapterHeader('净资产', this.netWorth >= 0)
+        }
+        .width('100%')
+        .padding({ left: 16, right: 16, bottom: 24 })
       }
       // 内容不足一屏时默认居中，显式置顶对齐安卓（内容紧贴标题栏下方）
       .align(Alignment.Top)
@@ -874,6 +967,11 @@ struct BalanceSheet {
         .id(`bs_acc_${acc.id}`)
         .backgroundColor(this.highlight !== null && this.highlight.id === acc.id
           ? $r('app.color.primaryContainer') : Color.Transparent)
+        .onClick(() => {
+          // 点击账户行：返回主界面并跳转到该账户交易页（对齐安卓 onNavigate(account)）
+          AppStorage.setOrCreate('balanceSheetTargetAccountId', acc.id);
+          router.back();
+        })
       }, (acc: Account) => `acc_${type}_${acc.id}`)
     }
     .width('100%')

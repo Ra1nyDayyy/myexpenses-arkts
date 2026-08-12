@@ -367,6 +367,9 @@ struct AccountEdit {
         .padding({ left: 16, right: 16, top: 8 })
       }
       .layoutWeight(1)
+      // 内容从页面顶部开始（对齐安卓 NestedScrollView 表单贴工具栏下方）
+      // Scroll 默认 align 为 Center，内容高度小于视口时会被垂直居中，需显式顶部对齐
+      .align(Alignment.Top)
     }
     .width('100%')
     .height('100%')
