@@ -72,6 +72,9 @@ export class Template {
   id: number = 0;
   title: string = '';
   accountId: number = -1;
+  accountLabel: string = ''; // 展示字段：账户名（对齐安卓 KEY_ACCOUNT_LABEL）
+  accountColor: number = 0xFFC107; // 展示字段：账户颜色（对齐安卓 KEY_COLOR 色条）
+  transferAccountLabel: string = ''; // 展示字段：转账目标账户名
   amount: number = 0;
   comment: string = '';
   categoryId: number = -1;

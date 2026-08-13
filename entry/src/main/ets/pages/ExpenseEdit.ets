@@ -1,7 +1,7 @@
 import { Transaction, OperationType, CrStatus } from '../model/Transaction';
 import { Account } from '../model/Account';
 import { Category } from '../model/Category';
-import { PaymentMethod, Payee, Tag } from '../model/SupportEntities';
+import { PaymentMethod, Payee, Tag, Template } from '../model/SupportEntities';
 import { Repository } from '../database/Repository';
 import { PageHeader } from '../components/PageHeader';
 import { CalculatorDialog } from '../components/CalculatorDialog';
@@ -13,6 +13,7 @@ import { picker } from '@kit.CoreFileKit';
 import { camera } from '@kit.CameraKit';
 import { abilityAccessCtrl, common, Permissions } from '@kit.AbilityKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 
 /**
  * 记账编辑页：对应 Android ExpenseEdit + one_expense.xml
@@ -21,6 +22,9 @@ import { fileIo as fs } from '@kit.CoreFileKit';
 @Component
 struct ExpenseEdit {
   @State transactionId: number = -1;
+  @State isTemplate: boolean = false; // 模板编辑模式（新建/编辑交易模板）
+  @State templateId: number = -1; // >0 编辑已有模板
+  @State templateTitle: string = ''; // 模板标题
   @State accountId: number = -1;
   @State operationType: OperationType = OperationType.TRANSACTION;
   @State isIncome: boolean = false;
@@ -84,6 +88,13 @@ struct ExpenseEdit {
     if (params && params['accountId'] !== undefined) {
       this.accountId = params['accountId'] as number;
     }
+    // 模板编辑模式：isTemplate=true 时本页编辑/新建模板（保存到 templates 表）
+    if (params && params['isTemplate'] !== undefined && params['isTemplate'] === true) {
+      this.isTemplate = true;
+      if (params['templateId'] !== undefined) {
+        this.templateId = params['templateId'] as number;
+      }
+    }
     // 交易类型预选（FAB 菜单传入）：-1 支出 / 1 收入 / 2 转账 / 3 拆分
     if (params && params['type'] !== undefined) {
       const t = params['type'] as number;
@@ -138,8 +149,42 @@ struct ExpenseEdit {
     if (acc) {
       this.currencyCode = acc.currency;
     }
-    if (this.transactionId > 0) {
+    if (this.isTemplate && this.templateId > 0) {
+      await this.loadTemplate();
+    } else if (this.transactionId > 0) {
       await this.loadTransaction();
+    }
+    hilog.info(0x0000, 'ExpenseEdit', 'loadData done: isTemplate=%{public}s templateId=%{public}d currency=%{public}s amountInput=%{public}s',
+      JSON.stringify(this.isTemplate), this.templateId, this.currencyCode, this.amountInput);
+  }
+
+  /**
+   * 加载已有模板数据到编辑表单（模板编辑模式）
+   */
+  async loadTemplate(): Promise<void> {
+    const tpl = await this.repository.getTemplate(this.templateId);
+    if (tpl) {
+      this.templateTitle = tpl.title;
+      this.accountId = tpl.accountId;
+      this.currencyCode = tpl.currency;
+      this.comment = tpl.comment;
+      this.payeeInput = tpl.payeeName;
+      this.selectedCategoryId = tpl.categoryId;
+      this.selectedCategoryLabel = tpl.categoryPath;
+      this.methodId = tpl.methodId;
+      this.transferAccountId = tpl.transferAccountId;
+      this.tagIds = tpl.tagIds;
+      this.isIncome = tpl.isIncome;
+      this.amountInput = formatMoney(Math.abs(tpl.amount), this.fractionDigits());
+      hilog.info(0x0000, 'ExpenseEdit', 'loadTemplate: tplAmount=%{public}d currency=%{public}s fractionDigits=%{public}d amountInput=%{public}s',
+        tpl.amount, this.currencyCode, this.fractionDigits(), this.amountInput);
+      if (tpl.transferAccountId >= 0) {
+        this.operationType = OperationType.TRANSFER;
+      } else if (tpl.isSplit()) {
+        this.operationType = OperationType.SPLIT;
+      } else {
+        this.operationType = OperationType.TRANSACTION;
+      }
     }
   }
 
@@ -254,6 +299,9 @@ struct ExpenseEdit {
   }
 
   private async performSave(): Promise<boolean> {
+    if (this.isTemplate) {
+      return this.performTemplateSave();
+    }
     const amount = parseMoney(this.amountInput, this.fractionDigits());
     if (this.accountId <= 0) {
       promptAction.showToast({ message: $r('app.string.toast_select_account') });
@@ -351,6 +399,49 @@ struct ExpenseEdit {
     }
   }
 
+  /**
+   * 模板模式保存：写入/更新 templates 表（对齐安卓 isTemplate 保存）
+   */
+  private async performTemplateSave(): Promise<boolean> {
+    const title = this.templateTitle.trim();
+    if (!title) {
+      promptAction.showToast({ message: '请输入模板标题' });
+      return false;
+    }
+    if (this.accountId <= 0) {
+      promptAction.showToast({ message: $r('app.string.toast_select_account') });
+      return false;
+    }
+    if (this.operationType === OperationType.TRANSFER && this.transferAccountId <= 0) {
+      promptAction.showToast({ message: $r('app.string.toast_select_target_account') });
+      return false;
+    }
+    const tpl = new Template();
+    tpl.id = this.templateId > 0 ? this.templateId : 0;
+    tpl.title = title;
+    tpl.accountId = this.accountId;
+    tpl.comment = this.comment.trim();
+    tpl.categoryId = this.selectedCategoryId;
+    tpl.payeeId = this.payeeInput.trim() ? await this.repository.findOrCreatePayee(this.payeeInput) : -1;
+    tpl.methodId = this.methodId;
+    tpl.transferAccountId = this.operationType === OperationType.TRANSFER ? this.transferAccountId : -1;
+    tpl.isIncome = this.isIncome;
+    tpl.tagIds = this.tagIds;
+    tpl.currency = this.currencyCode;
+    tpl.amount = this.isIncome ? Math.abs(parseMoney(this.amountInput, this.fractionDigits())) : -Math.abs(parseMoney(this.amountInput, this.fractionDigits()));
+    try {
+      if (tpl.id > 0) {
+        await this.repository.updateTemplate(tpl);
+      } else {
+        await this.repository.insertTemplate(tpl);
+      }
+      return true;
+    } catch (e) {
+      promptAction.showToast({ message: '模板保存失败: ' + JSON.stringify(e) });
+      return false;
+    }
+  }
+
   private navigateCategorySelect(): void {
     router.pushUrl({
       url: 'pages/CategorySelect',
@@ -364,13 +455,15 @@ struct ExpenseEdit {
    */
   private showEditOptions(): void {
     const sheets: Array<SheetInfo> = [];
-    sheets.push({
-      title: this.showOriginalAmount ? '隐藏原始金额' : '展示原始金额',
-      action: () => this.toggleOriginalAmount()
-    } as SheetInfo);
+    if (!this.isTemplate) {
+      sheets.push({
+        title: this.showOriginalAmount ? '隐藏原始金额' : '展示原始金额',
+        action: () => this.toggleOriginalAmount()
+      } as SheetInfo);
+    }
     const options: ActionSheetOptions = {
       title: '记账选项',
-      message: '交易录入操作',
+      message: this.isTemplate ? '模板编辑操作' : '交易录入操作',
       confirm: {
         value: '取消',
         action: () => {
@@ -653,7 +746,9 @@ struct ExpenseEdit {
   build() {
     Column() {
       PageHeader({
-        title: this.transactionId > 0 ? '编辑交易' : '新建交易',
+        title: this.isTemplate
+          ? (this.templateId > 0 ? '编辑模板' : '新建模板')
+          : (this.transactionId > 0 ? '编辑交易' : '新建交易'),
         rightText: '保存',
         showMore: true,
         onBack: () => {
@@ -714,6 +809,25 @@ struct ExpenseEdit {
             }
           })
 
+          // 模板标题（模板编辑模式显示，对齐安卓模板标题）
+          if (this.isTemplate) {
+            Row() {
+              Text('标题')
+                .fontSize(14)
+                .fontColor($r('app.color.textPrimary'))
+                .width('30%')
+              TextInput({ placeholder: '模板标题', text: this.templateTitle })
+                .layoutWeight(1)
+                .textAlign(TextAlign.End)
+                .onChange((v: string) => {
+                  this.templateTitle = v;
+                })
+            }
+            .width('100%')
+            .height(48)
+            .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
+          }
+
           // 账户
           Row() {
             Text('账户')
@@ -763,14 +877,14 @@ struct ExpenseEdit {
               .fontColor($r('app.color.textPrimary'))
               .width('30%')
             TextInput({ placeholder: '0.00', text: this.originalAmountInput })
-              .type(InputType.Number)
+              .type(InputType.NUMBER_DECIMAL)
               .layoutWeight(1)
               .textAlign(TextAlign.End)
               .onChange((v: string) => {
                 this.originalAmountInput = v;
               })
           }
-          .visibility(this.showOriginalAmount ? Visibility.Visible : Visibility.Hidden)
+          .visibility((this.showOriginalAmount && !this.isTemplate) ? Visibility.Visible : Visibility.Hidden)
           .width('100%')
           .height(48)
           .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
@@ -786,7 +900,7 @@ struct ExpenseEdit {
               .fontColor($r('app.color.textSecondary'))
               .margin({ right: 6 })
             TextInput({ placeholder: '0.00', text: this.amountInput })
-              .type(InputType.Number)
+              .type(InputType.NUMBER_DECIMAL)
               .layoutWeight(1)
               .textAlign(TextAlign.End)
               .onChange((v: string) => {
@@ -924,7 +1038,7 @@ struct ExpenseEdit {
             this.navigateCategorySelect();
           })
 
-          // 日期（点击弹出鸿蒙原生日期选择器）
+          // 日期（点击弹出鸿蒙原生日期选择器；模板模式隐藏）
           Row() {
             Text('日期')
               .fontSize(14)
@@ -939,6 +1053,7 @@ struct ExpenseEdit {
               .height(16)
               .opacity(0.4)
           }
+          .visibility(this.isTemplate ? Visibility.Hidden : Visibility.Visible)
           .width('100%')
           .height(48)
           .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
@@ -946,7 +1061,7 @@ struct ExpenseEdit {
             this.showDatePicker();
           })
 
-          // 时间（点击弹出鸿蒙原生时间选择器）
+          // 时间（点击弹出鸿蒙原生时间选择器；模板模式隐藏）
           Row() {
             Text('时间')
               .fontSize(14)
@@ -961,6 +1076,7 @@ struct ExpenseEdit {
               .height(16)
               .opacity(0.4)
           }
+          .visibility(this.isTemplate ? Visibility.Hidden : Visibility.Visible)
           .width('100%')
           .height(48)
           .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
@@ -1043,7 +1159,7 @@ struct ExpenseEdit {
           .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
 
 
-          // 附件（对齐安卓 attach）
+          // 附件（对齐安卓 attach；模板模式隐藏）
           Row() {
             Text('附件')
               .fontSize(14)
@@ -1089,21 +1205,24 @@ struct ExpenseEdit {
                 this.pickAttachment();
               })
           }
+          .visibility(this.isTemplate ? Visibility.Hidden : Visibility.Visible)
           .width('100%')
           .height(48)
           .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
 
-          // 保存并新建（对齐安卓 Save and new）
-          Button('保存并新建')
-            .width('100%')
-            .height(48)
-            .margin({ top: 16, left: 16, right: 16 })
-            .backgroundColor($r('app.color.primaryContainer'))
-            .fontColor($r('app.color.primaryColor'))
-            .fontSize(16)
-            .onClick(() => {
-              this.saveAndNew();
-            })
+          // 保存并新建（对齐安卓 Save and new；模板模式隐藏）
+          if (!this.isTemplate) {
+            Button('保存并新建')
+              .width('100%')
+              .height(48)
+              .margin({ top: 16, left: 16, right: 16 })
+              .backgroundColor($r('app.color.primaryContainer'))
+              .fontColor($r('app.color.primaryColor'))
+              .fontSize(16)
+              .onClick(() => {
+                this.saveAndNew();
+              })
+          }
         }
         .width('100%')
         .padding({ left: 16, right: 16, top: 4 })

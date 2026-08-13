@@ -10,6 +10,8 @@ import { EmptyState } from '../components/EmptyState';
 import { formatMoney } from '../model/Money';
 import { currencyByCode } from '../model/CurrencyUnit';
 import { router, promptAction } from '@kit.ArkUI';
+import { BudgetManage } from './BudgetManage';
+import { DebtManage } from './DebtManage';
 
 /**
  * 主界面（V2）：对应 Android MyExpensesV2 + MainScreen
@@ -44,6 +46,8 @@ struct Index {
 
   private repository: Repository = Repository.getInstance();
   private settings: SettingsService = SettingsService.getInstance();
+  // P0-3：根页面 Navigation 的路径栈，二级页面通过 NavDestination 挂载
+  private pathStack: NavPathStack = new NavPathStack();
 
   aboutToAppear(): void {
     this.loadData();
@@ -379,51 +383,71 @@ struct Index {
   }
 
   build() {
-    Column() {
-      if (this.loading) {
-        Column() {
-          LoadingProgress()
-            .width(50)
-            .height(50)
+    // P0-3：Navigation 作为根容器承载二级 NavDestination 页面
+    // hideTitleBar(true) 关闭 Navigation 自带的默认标题栏占位，避免底部 TabBar 被抬高
+    Navigation(this.pathStack) {
+      Column() {
+        if (this.loading) {
+          Column() {
+            LoadingProgress()
+              .width(50)
+              .height(50)
+          }
+          .width('100%')
+          .layoutWeight(1)
+          .justifyContent(FlexAlign.Center)
+          .alignItems(HorizontalAlign.Center)
+        } else {
+          // 原生 Tabs：底部 TabBar 贴底（对齐 Android BottomNavigation）
+          // 绑定 index 使其受控：程序修改 selectedTab 时（如点击累计行跳转交易页）同步切换页签内容
+          Tabs({ barPosition: BarPosition.End, index: this.selectedTab }) {
+            TabContent() {
+              this.accountsTab()
+            }.tabBar(this.tabBuilder(0, '账户', $r('app.media.ic_tab_account')))
+
+            TabContent() {
+              this.transactionsTab()
+            }.tabBar(this.tabBuilder(1, '交易', $r('app.media.ic_tab_transaction')))
+
+            TabContent() {
+              this.templatesTab()
+            }.tabBar(this.tabBuilder(2, '模板', $r('app.media.ic_tab_template')))
+
+            TabContent() {
+              this.moreTab()
+            }.tabBar(this.tabBuilder(3, '更多', $r('app.media.ic_tab_more')))
+          }
+          .width('100%')
+          .layoutWeight(1)
+          .barHeight(56)
+          .animationDuration(300)
+          .scrollable(false)
+          .barBackgroundColor($r('app.color.tabBarBackground'))
+          .onChange((index: number) => {
+            this.selectedTab = index;
+          })
         }
-        .width('100%')
-        .layoutWeight(1)
-        .justifyContent(FlexAlign.Center)
-        .alignItems(HorizontalAlign.Center)
-      } else {
-        // 原生 Tabs：底部 TabBar 贴底（对齐 Android BottomNavigation）
-        // 绑定 index 使其受控：程序修改 selectedTab 时（如点击累计行跳转交易页）同步切换页签内容
-        Tabs({ barPosition: BarPosition.End, index: this.selectedTab }) {
-          TabContent() {
-            this.accountsTab()
-          }.tabBar(this.tabBuilder(0, '账户', $r('app.media.ic_tab_account')))
-
-          TabContent() {
-            this.transactionsTab()
-          }.tabBar(this.tabBuilder(1, '交易', $r('app.media.ic_tab_transaction')))
-
-          TabContent() {
-            this.templatesTab()
-          }.tabBar(this.tabBuilder(2, '模板', $r('app.media.ic_tab_template')))
-
-          TabContent() {
-            this.moreTab()
-          }.tabBar(this.tabBuilder(3, '更多', $r('app.media.ic_tab_more')))
-        }
-        .width('100%')
-        .layoutWeight(1)
-        .barHeight(56)
-        .animationDuration(300)
-        .scrollable(false)
-        .barBackgroundColor($r('app.color.tabBarBackground'))
-        .onChange((index: number) => {
-          this.selectedTab = index;
-        })
       }
+      .width('100%')
+      .height('100%')
+      .backgroundColor($r('app.color.pageBackground'))
     }
-    .width('100%')
-    .height('100%')
-    .backgroundColor($r('app.color.pageBackground'))
+    .mode(NavigationMode.Stack)
+    .hideTitleBar(true)
+    .navDestination(this.pageMap)
+  }
+
+  /**
+   * P0-3：Navigation 二级页面映射
+   * 已迁移为 NavDestination 的页面在此注册；未迁移页面继续走 router
+   */
+  @Builder
+  pageMap(name: string) {
+    if (name === 'BudgetManage') {
+      BudgetManage()
+    } else if (name === 'DebtManage') {
+      DebtManage()
+    }
   }
 
   /**
@@ -555,11 +579,13 @@ struct Index {
               this.toggleStatus(id);
             },
             onClickTransaction: (id: number) => {
+              // 选择模式：点击行切换多选；普通模式：由 TransactionRow 的 bindMenu 在行下方弹出操作菜单
               if (this.isSelectionMode) {
                 this.toggleSelect(id);
-              } else {
-                this.showTransactionMenu(id);
               }
+            },
+            onMenuAction: (id: number, action: string) => {
+              this.handleTransactionMenuAction(id, action);
             },
             onCreateTransaction: () => {
               this.navigateToExpenseEdit(-1, this.selectedAccountId);
@@ -677,7 +703,7 @@ struct Index {
             subtitle: '常用交易可以保存为模板，方便重复记账',
             actionText: '新建模板',
             onAction: () => {
-              this.createTemplate();
+              this.navigateToTemplateEdit(-1);
             }
           })
           .width('100%')
@@ -687,14 +713,31 @@ struct Index {
             ForEach(this.templates, (tpl: Template) => {
               ListItem() {
                 Row() {
+                  // 左侧：模板图标（对齐安卓 Plan ImageView）
+                  Image($r('app.media.ic_tab_template'))
+                    .width(22)
+                    .height(22)
+                    .objectFit(ImageFit.Contain)
+                    .fillColor($r('app.color.textSecondary'))
+                    .opacity(0.8)
+
+                  // 账户颜色竖条（对齐安卓 colorAccount）
+                  Column()
+                    .width(4)
+                    .height('100%')
+                    .backgroundColor(this.templateAccountColor(tpl))
+                    .margin({ left: 8, right: 10 })
+                    .borderRadius(2)
+
+                  // 中间：标题（加粗，有周期追加后缀）+ 副标题（类别 · 备注 · 收款人）
                   Column() {
-                    Text(tpl.title)
+                    Text(tpl.title + (tpl.recurrence > 0 ? ` (${this.recurrenceLabel(tpl.recurrence)})` : ''))
                       .fontSize(15)
                       .fontWeight(FontWeight.Medium)
                       .fontColor($r('app.color.textPrimary'))
                       .maxLines(1)
                       .textOverflow({ overflow: TextOverflow.Ellipsis })
-                    Text(`${tpl.categoryPath || '未分类'} · ${this.templateAmount(tpl)}${tpl.recurrence > 0 ? ' · ' + this.recurrenceLabel(tpl.recurrence) : ''}`)
+                    Text(this.templateSubtitle(tpl))
                       .fontSize(12)
                       .fontColor($r('app.color.textSecondary'))
                       .maxLines(1)
@@ -704,54 +747,26 @@ struct Index {
                   .alignItems(HorizontalAlign.Start)
                   .margin({ left: 12 })
 
-                  // 生成交易（按周期计划生成固定收支）
-                  if (tpl.recurrence > 0) {
-                    Button('生成')
-                      .height(28)
-                      .fontSize(12)
-                      .backgroundColor($r('app.color.primaryColor'))
-                      .fontColor(Color.White)
-                      .margin({ right: 8 })
-                      .onClick(() => {
-                        this.generatePlan(tpl);
-                      })
-                  }
-
-                  Button('用于交易')
-                    .height(28)
-                    .fontSize(12)
-                    .backgroundColor($r('app.color.primaryContainer'))
-                    .fontColor($r('app.color.primaryColor'))
-                    .onClick(() => {
-                      this.useTemplate(tpl);
-                    })
-
-                  // 设置周期（长按模板行弹出）
-                  Image($r('sys.media.ohos_ic_public_edit'))
-                    .width(16)
-                    .height(16)
-                    .opacity(0.6)
+                  // 右侧：金额（收入绿/支出红/转账蓝，对齐安卓 Amount）
+                  Text(this.templateAmount(tpl))
+                    .fontSize(15)
+                    .fontWeight(FontWeight.Medium)
+                    .fontColor(this.templateAmountColor(tpl))
                     .margin({ left: 8 })
-                    .onClick(() => {
-                      this.setRecurrence(tpl);
-                    })
-
-                  Image($r('sys.media.ohos_ic_public_close'))
-                    .width(16)
-                    .height(16)
-                    .opacity(0.6)
-                    .margin({ left: 8 })
-                    .onClick(() => {
-                      this.deleteTemplate(tpl);
-                    })
                 }
                 .width('100%')
-                .height(56)
+                .height(60)
                 .padding({ left: 16, right: 16 })
                 .backgroundColor($r('app.color.cardBackgroundColor'))
                 .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
+                .onClick(() => {
+                  this.useTemplate(tpl);
+                })
+                .gesture(LongPressGesture().onAction(() => {
+                  this.showTemplateMenu(tpl);
+                }))
               }
-            }, (tpl: Template) => `tpl_${tpl.id}_${tpl.recurrence}_${tpl.advanceDays}_${tpl.autoExecute}`)
+            }, (tpl: Template) => `tpl_${tpl.id}_${tpl.recurrence}_${tpl.advanceDays}_${tpl.autoExecute}_${tpl.amount}_${tpl.title}`)
           }
           .layoutWeight(1)
           .width('100%')
@@ -774,7 +789,7 @@ struct Index {
       .shadow({ radius: 8, color: '#40000000', offsetY: 4 })
       .position({ x: '76%', y: '78%' })
       .onClick(() => {
-        this.createTemplate();
+        this.navigateToTemplateEdit(-1);
       })
     }
     .width('100%')
@@ -788,20 +803,133 @@ struct Index {
   }
 
   /**
-   * 新建模板：用当前账户创建一个简单模板
+   * 模板金额着色（对齐安卓 template_row Amount：转账蓝/收入绿/支出红）
    */
-  private async createTemplate(): Promise<void> {
+  private templateAmountColor(tpl: Template): ResourceColor {
+    if (tpl.isTransfer()) {
+      return $r('app.color.colorTransfer');
+    }
+    return tpl.amount >= 0 ? $r('app.color.colorIncome') : $r('app.color.colorExpense');
+  }
+
+  /**
+   * 模板账户颜色竖条（对齐安卓 colorAccount）
+   */
+  private templateAccountColor(tpl: Template): ResourceColor {
+    const c = tpl.accountColor;
+    if (c) {
+      const rgb = c & 0xFFFFFF;
+      return '#' + rgb.toString(16).padStart(6, '0').toUpperCase();
+    }
+    return $r('app.color.defaultAccountColor');
+  }
+
+  /**
+   * 模板行副标题（对齐安卓 template_row Category：类别 · 备注 · 收款人；转账显示 账户 → 账户）
+   */
+  private templateSubtitle(tpl: Template): string {
+    const parts: string[] = [];
+    if (tpl.isTransfer()) {
+      const from = tpl.isIncome ? tpl.transferAccountLabel : tpl.accountLabel;
+      const to = tpl.isIncome ? tpl.accountLabel : tpl.transferAccountLabel;
+      parts.push(`${from || '账户'} → ${to || '账户'}`);
+    } else {
+      parts.push(tpl.categoryPath || '未分类');
+    }
+    if (tpl.comment) {
+      parts.push(tpl.comment);
+    }
+    if (tpl.payeeName) {
+      parts.push(tpl.payeeName);
+    }
+    return parts.join(' · ');
+  }
+
+  /**
+   * 模板行长按操作菜单（对齐安卓 contextual action bar：生成计划/设置周期/删除）
+   */
+  private showTemplateMenu(tpl: Template): void {
+    const sheets: SheetInfo[] = [];
+    sheets.push({
+      title: '编辑模板',
+      action: () => {
+        this.navigateToTemplateEdit(tpl.id);
+      }
+    });
+    if (tpl.recurrence > 0) {
+      sheets.push({
+        title: '生成计划交易',
+        action: () => {
+          this.generatePlan(tpl);
+        }
+      });
+    }
+    sheets.push({
+      title: '设置周期',
+      action: () => {
+        this.setRecurrence(tpl);
+      }
+    });
+    sheets.push({
+      title: '删除模板',
+      action: () => {
+        this.confirmDeleteTemplate(tpl);
+      }
+    });
+    const options: ActionSheetOptions = {
+      title: tpl.title,
+      message: '模板操作',
+      confirm: {
+        value: '取消',
+        action: () => {
+        }
+      },
+      sheets: sheets
+    };
+    this.getUIContext().showActionSheet(options);
+  }
+
+  /**
+   * 删除模板二次确认（对齐安卓 warning_delete_template）
+   */
+  private confirmDeleteTemplate(tpl: Template): void {
+    this.getUIContext().showAlertDialog({
+      title: '删除模板',
+      message: `确定要删除模板「${tpl.title}」吗？此操作不可恢复。`,
+      primaryButton: {
+        value: '取消',
+        action: () => {
+        }
+      },
+      secondaryButton: {
+        value: '删除',
+        fontColor: $r('app.color.colorExpense'),
+        action: () => {
+          this.deleteTemplate(tpl);
+        }
+      }
+    });
+  }
+
+  /**
+   * 跳转模板编辑页（新建模板）
+   * 对齐安卓 TemplatesList 新建模板：进入 ExpenseEdit 的模板模式
+   */
+  private navigateToTemplateEdit(templateId: number): void {
     const acc = this.currentAccount() || (this.accounts.length > 0 ? this.accounts[0] : null);
     if (!acc) {
       promptAction.showToast({ message: $r('app.string.toast_create_account_first') });
       return;
     }
-    const tpl = new Template();
-    tpl.title = '新模板';
-    tpl.accountId = acc.id;
-    tpl.currency = acc.currency;
-    await this.repository.insertTemplate(tpl);
-    await this.loadData();
+    router.pushUrl({
+      url: 'pages/ExpenseEdit',
+      params: {
+        accountId: acc.id,
+        isTemplate: true,
+        templateId: templateId
+      }
+    }).catch(() => {
+    });
   }
 
   /**
@@ -973,10 +1101,25 @@ struct Index {
         Image($r('sys.media.ohos_ic_public_search_filled'))
           .width(22)
           .height(22)
-          .margin({ right: 16 })
+          .margin({ right: 8 })
           .onClick(() => {
             this.navigateToSearch();
           })
+      }
+      // 账户页分组切换（对齐安卓 AccountGrouping：不分组/按类型/按货币/按标记）
+      if (this.selectedTab === 0) {
+        Button() {
+          Text(this.groupingLabel())
+            .fontSize(12)
+            .fontColor($r('app.color.primaryColor'))
+        }
+        .height(30)
+        .backgroundColor($r('app.color.primaryContainer'))
+        .borderRadius(4)
+        .margin({ right: 8 })
+        .onClick(() => {
+          this.cycleGrouping();
+        })
       }
       // 账户页选项图标（对齐安卓 accounts.xml 菜单，含新建账户/类型/标记等）
       if (this.selectedTab === 0) {
@@ -1090,19 +1233,6 @@ struct Index {
           this.navigateToSearch();
         })
 
-      // 分组切换
-      Button() {
-        Text(this.groupingLabel())
-          .fontSize(12)
-          .fontColor($r('app.color.primaryColor'))
-      }
-      .height(30)
-      .backgroundColor($r('app.color.primaryContainer'))
-      .borderRadius(4)
-      .margin({ right: 8 })
-      .onClick(() => {
-        this.cycleGrouping();
-      })
 
       // AI 助手
       Image($r('sys.media.ohos_ic_public_scan'))
@@ -1413,14 +1543,14 @@ struct Index {
       }
       ListItem() {
         this.menuRow('预算编制', $r('app.media.ic_category'), () => {
-          router.pushUrl({ url: 'pages/BudgetManage' }).catch(() => {
-          });
+          // P0-3：已迁移 NavDestination 的页面走 Navigation 栈
+          this.pathStack.pushPathByName('BudgetManage', null);
         })
       }
       ListItem() {
         this.menuRow('债务', $r('app.media.ic_locked'), () => {
-          router.pushUrl({ url: 'pages/DebtManage' }).catch(() => {
-          });
+          // P0-3：已迁移 NavDestination 的页面走 Navigation 栈
+          this.pathStack.pushPathByName('DebtManage', null);
         })
       }
       ListItem() {
@@ -1518,29 +1648,20 @@ struct Index {
   }
 
   /**
-   * 点击交易行弹出操作菜单（对齐安卓 TransactionList 点击弹菜单：详情/编辑/删除）
+   * 处理交易行操作菜单动作（bindMenu 在行下方弹出，对齐安卓 PopupMenu）
    */
-  private showTransactionMenu(id: number): void {
+  private handleTransactionMenuAction(id: number, action: string): void {
     const tx = this.currentTransactions.find((t: Transaction) => t.id === id);
     if (!tx) {
       return;
     }
-    const sheets: Array<SheetInfo> = [
-      { title: '详细信息', action: () => this.showTransactionDetail(tx) },
-      { title: '编辑', action: () => this.navigateToExpenseEdit(id, this.selectedAccountId) },
-      { title: '删除', action: () => this.confirmDeleteTransaction(tx) }
-    ];
-    const options: ActionSheetOptions = {
-      title: '交易操作',
-      message: tx.categoryPath || '未分类',
-      confirm: {
-        value: '取消',
-        action: () => {
-        }
-      },
-      sheets: sheets
-    };
-    this.getUIContext().showActionSheet(options);
+    if (action === 'detail') {
+      this.showTransactionDetail(tx);
+    } else if (action === 'edit') {
+      this.navigateToExpenseEdit(id, this.selectedAccountId);
+    } else if (action === 'delete') {
+      this.confirmDeleteTransaction(tx);
+    }
   }
 
   private detailDialog: CustomDialogController | null = null;

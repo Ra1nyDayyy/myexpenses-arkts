@@ -26,8 +26,21 @@ export struct TransactionListPage {
   };
   onClickTransaction: (id: number) => void = () => {
   };
+  onMenuAction: (id: number, action: string) => void = () => {
+  };
   onCreateTransaction: () => void = () => {
   };
+
+  /**
+   * 构建交易行操作菜单项（详情/编辑/删除），action 通过回调交由父页面处理
+   */
+  private menuItemsFor(t: Transaction): Array<MenuElement> {
+    return [
+      { value: '详细信息', action: () => { this.onMenuAction(t.id, 'detail'); } },
+      { value: '编辑', action: () => { this.onMenuAction(t.id, 'edit'); } },
+      { value: '删除', action: () => { this.onMenuAction(t.id, 'delete'); } }
+    ];
+  }
 
   private fractionDigits(): number {
     return currencyByCode(this.account.currency).fractionDigits;
@@ -108,6 +121,8 @@ export struct TransactionListPage {
                     transaction: t,
                     selected: this.selectedIds.indexOf(t.id) >= 0,
                     showAccount: this.showAccount,
+                    // 选择模式不弹操作菜单（点击用于多选）
+                    menuItems: this.selectionMode ? [] : this.menuItemsFor(t),
                     onToggleStatus: (id: number) => {
                       this.onToggleStatus(id);
                     },

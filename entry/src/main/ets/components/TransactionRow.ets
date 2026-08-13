@@ -12,6 +12,8 @@ export struct TransactionRow {
   @Prop selected: boolean = false;
   // 聚合模式（全部账户）：显示所属账户名（对齐安卓 transaction.accountLabel 行）
   @Prop showAccount: boolean = false;
+  // 操作菜单项（点击行时在行下方弹出，对齐安卓 PopupMenu）：空数组表示不弹菜单（如选择模式）
+  menuItems: Array<MenuElement> = [];
   onToggleStatus: (id: number) => void = () => {
   };
   onItemLongPress: (id: number) => void = () => {
@@ -113,7 +115,7 @@ export struct TransactionRow {
       .height(30)
       .alignContent(Alignment.Center)
 
-      // 状态切换块（点击缩放动画 + 涟漪）
+      // 状态切换块（点击缩放动画 + 涟漪）；ArkUI 点击事件不冒泡，不会触发行级操作菜单
       Row()
         .width(8)
         .height(20)
@@ -179,6 +181,8 @@ export struct TransactionRow {
     .height(56)
     .padding({ left: 12, right: 12 })
     .backgroundColor(this.selected ? $r('app.color.rowSelectedBackground') : Color.Transparent)
+    // 操作菜单锚定在交易行下方（对齐安卓 PopupMenu，替代底部 ActionSheet）
+    .bindMenu(this.menuItems, { placement: Placement.Bottom })
     .onClick(() => {
       this.onItemClick(this.transaction.id);
     })

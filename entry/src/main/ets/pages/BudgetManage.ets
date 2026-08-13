@@ -1,33 +1,132 @@
 import { Budget } from '../model/SupportEntities';
 import { Account } from '../model/Account';
 import { Repository } from '../database/Repository';
-import { PageHeader } from '../components/PageHeader';
 import { formatMoney } from '../model/Money';
 import { currencyByCode } from '../model/CurrencyUnit';
-import { router, promptAction } from '@kit.ArkUI';
+import { promptAction } from '@kit.ArkUI';
+
+/**
+ * 预算输入对话框（鸿蒙原生 CustomDialog）
+ * 对应 Android ManageBudgets 的"新建预算"表单
+ */
+@CustomDialog
+export struct BudgetInputDialog {
+  controller?: CustomDialogController;
+  accounts: Account[] = [];
+  @State title: string = '';
+  @State amount: string = '';
+  @State accountId: number = -1;
+  onConfirm: (title: string, amount: string, accountId: number) => void = () => {
+  };
+
+  private accountOptions(): SelectOption[] {
+    const options: SelectOption[] = [];
+    for (let a of this.accounts) {
+      options.push({ value: a.label } as SelectOption);
+    }
+    return options;
+  }
+
+  private accountName(): string {
+    const acc = this.accounts.find((a: Account) => a.id === this.accountId);
+    return acc ? acc.label : '未选择账户';
+  }
+
+  build() {
+    Column() {
+      Text('新建预算')
+        .fontSize(16)
+        .fontWeight(FontWeight.Medium)
+        .margin({ bottom: 16 })
+
+      TextInput({ placeholder: '预算名称', text: this.title })
+        .width('100%')
+        .height(44)
+        .onChange((v: string) => {
+          this.title = v;
+        })
+
+      TextInput({ placeholder: '预算金额', text: this.amount })
+        .type(InputType.Number)
+        .width('100%')
+        .height(44)
+        .margin({ top: 12 })
+        .onChange((v: string) => {
+          this.amount = v;
+        })
+
+      // 账户选择（原生 Select，对应 Android 预算表单的账户下拉）
+      Row() {
+        Text('账户')
+          .fontSize(14)
+          .fontColor($r('app.color.textPrimary'))
+          .width(56)
+        Select(this.accountOptions())
+          .selected(this.accounts.findIndex((a: Account) => a.id === this.accountId))
+          .layoutWeight(1)
+          .onSelect((index: number) => {
+            if (index >= 0 && index < this.accounts.length) {
+              this.accountId = this.accounts[index].id;
+            }
+          })
+      }
+      .width('100%')
+      .height(44)
+      .margin({ top: 8 })
+
+      Row({ space: 12 }) {
+        Button('取消')
+          .layoutWeight(1)
+          .backgroundColor($r('app.color.cardBackgroundColor'))
+          .fontColor($r('app.color.textPrimary'))
+          .onClick(() => {
+            this.controller?.close();
+          })
+        Button('确定')
+          .layoutWeight(1)
+          .backgroundColor($r('app.color.primaryColor'))
+          .onClick(() => {
+            this.onConfirm(this.title, this.amount, this.accountId);
+            this.controller?.close();
+          })
+      }
+      .width('100%')
+      .margin({ top: 20 })
+    }
+    .padding(20)
+    .width('100%')
+  }
+}
 
 /**
  * 预算管理页：对应 Android ManageBudgets（预算编制）
+ * P0-3：已迁移为 NavDestination（原生标题栏 + 原生返回），不再使用手工 PageHeader
  */
-@Entry
 @Component
-struct BudgetManage {
+export struct BudgetManage {
   @State budgets: Budget[] = [];
   @State accounts: Account[] = [];
-  @State showDialog: boolean = false;
-  @State newTitle: string = '';
-  @State newAmount: string = '';
   @State newAccountId: number = -1;
 
   private repository: Repository = Repository.getInstance();
+  private pathStack: NavPathStack = new NavPathStack();
+  private dialog: CustomDialogController = new CustomDialogController({
+    builder: BudgetInputDialog({
+      accounts: [],
+      onConfirm: (title: string, amount: string, accountId: number) => {
+        this.addBudget(title, amount, accountId);
+      }
+    }),
+    autoCancel: true,
+    alignment: DialogAlignment.Center,
+    customStyle: false,
+    cornerRadius: 12
+  });
 
   aboutToAppear(): void {
     this.load();
   }
 
-  onPageShow(): void {
-    this.load();
-  }
 
   async load(): Promise<void> {
     this.accounts = await this.repository.getAccounts();
@@ -37,22 +136,54 @@ struct BudgetManage {
     }
   }
 
-  private async addBudget(): Promise<void> {
-    if (!this.newTitle.trim()) {
+  private openAddDialog(): void {
+    // 每次打开重建 controller，确保传入最新的账户列表和默认账户
+    this.dialog = new CustomDialogController({
+      builder: BudgetInputDialog({
+        accounts: this.accounts,
+        accountId: this.newAccountId,
+        onConfirm: (title: string, amount: string, accountId: number) => {
+          this.addBudget(title, amount, accountId);
+        }
+      }),
+      autoCancel: true,
+      alignment: DialogAlignment.Center,
+      customStyle: false,
+      cornerRadius: 12
+    });
+    this.dialog.open();
+  }
+
+  private async addBudget(title: string, amount: string, accountId: number): Promise<void> {
+    if (!title.trim()) {
       promptAction.showToast({ message: '请输入预算名称' });
       return;
     }
     const b = new Budget();
-    b.title = this.newTitle.trim();
-    b.accountId = this.newAccountId;
-    const acc = this.accounts.find((a: Account) => a.id === this.newAccountId);
+    b.title = title.trim();
+    b.accountId = accountId;
+    const acc = this.accounts.find((a: Account) => a.id === accountId);
     b.currency = acc ? acc.currency : 'CNY';
-    b.budgetAmount = parseFloat(this.newAmount) * 100 || 0;
+    b.budgetAmount = parseFloat(amount) * 100 || 0;
     await this.repository.insertBudget(b);
-    this.showDialog = false;
-    this.newTitle = '';
-    this.newAmount = '';
+    this.newAccountId = accountId;
     await this.load();
+  }
+
+  private confirmDeleteBudget(b: Budget): void {
+    promptAction.showDialog({
+      title: '删除预算',
+      message: `确定要删除预算"${b.title}"吗？`,
+      buttons: [
+        { text: '取消', color: '#808080' },
+        { text: '删除', color: '#E84026' }
+      ]
+    }).then((res: promptAction.ShowDialogSuccessResponse) => {
+      if (res.index === 1) {
+        this.deleteBudget(b);
+      }
+    }).catch(() => {
+    });
   }
 
   private async deleteBudget(b: Budget): Promise<void> {
@@ -61,114 +192,86 @@ struct BudgetManage {
   }
 
   build() {
-    Column() {
-      PageHeader({
-        title: '预算编制',
-        rightText: '+',
-        onBack: () => {
-          router.back();
-        },
-        onRight: () => {
-          this.showDialog = true;
-        }
-      })
-
-      if (this.budgets.length === 0) {
-        Column({ space: 12 }) {
-          Text('暂无预算')
-            .fontSize(16)
-            .fontColor($r('app.color.textSecondary'))
-          Button('新建预算')
-            .backgroundColor($r('app.color.primaryColor'))
-            .onClick(() => {
-              this.showDialog = true;
-            })
-        }
-        .width('100%')
-        .layoutWeight(1)
-        .justifyContent(FlexAlign.Center)
-        .alignItems(HorizontalAlign.Center)
-      } else {
-        List({ space: 0 }) {
-          ForEach(this.budgets, (b: Budget) => {
-            ListItem() {
-              Row() {
-                Column({ space: 2 }) {
-                  Text(b.title)
-                    .fontSize(15)
-                    .fontWeight(FontWeight.Medium)
-                    .fontColor($r('app.color.textPrimary'))
-                  Text(`${b.description || '未设置描述'} · ${this.symbol(b.currency)}${formatMoney(b.budgetAmount, 2)}`)
-                    .fontSize(12)
-                    .fontColor($r('app.color.textSecondary'))
-                }
-                .layoutWeight(1)
-                .alignItems(HorizontalAlign.Start)
-
-                Image($r('sys.media.ohos_ic_public_close'))
-                  .width(16)
-                  .height(16)
-                  .opacity(0.6)
-                  .onClick(() => {
-                    this.deleteBudget(b);
-                  })
-              }
-              .width('100%')
-              .height(56)
-              .padding({ left: 16, right: 16 })
-              .backgroundColor($r('app.color.cardBackgroundColor'))
-              .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
-            }
-          }, (b: Budget) => `budget_${b.id}`)
-        }
-        .layoutWeight(1)
-        .width('100%')
-      }
-
-      // 新建预算对话框
-      if (this.showDialog) {
-        Column() {
-          Text('新建预算')
-            .fontSize(16)
-            .fontWeight(FontWeight.Medium)
-            .margin({ bottom: 12 })
-          TextInput({ placeholder: '预算名称', text: this.newTitle })
-            .onChange((v: string) => {
-              this.newTitle = v;
-            })
-          TextInput({ placeholder: '预算金额', text: this.newAmount })
-            .type(InputType.Number)
-            .margin({ top: 8 })
-            .onChange((v: string) => {
-              this.newAmount = v;
-            })
-          Row() {
-            Button('取消')
-              .backgroundColor($r('app.color.cardBackgroundColor'))
-              .fontColor($r('app.color.textPrimary'))
-              .layoutWeight(1)
-              .onClick(() => {
-                this.showDialog = false;
-              })
-            Button('确定')
+    NavDestination() {
+      Column() {
+        if (this.budgets.length === 0) {
+          Column({ space: 12 }) {
+            Text('暂无预算')
+              .fontSize(16)
+              .fontColor($r('app.color.textSecondary'))
+            Button('新建预算')
               .backgroundColor($r('app.color.primaryColor'))
-              .layoutWeight(1)
-              .margin({ left: 12 })
               .onClick(() => {
-                this.addBudget();
+                this.openAddDialog();
               })
           }
-          .margin({ top: 16 })
+          .width('100%')
+          .layoutWeight(1)
+          .justifyContent(FlexAlign.Center)
+          .alignItems(HorizontalAlign.Center)
+        } else {
+          List({ space: 0 }) {
+            ForEach(this.budgets, (b: Budget) => {
+              ListItem() {
+                Row() {
+                  Column({ space: 2 }) {
+                    Text(b.title)
+                      .fontSize(15)
+                      .fontWeight(FontWeight.Medium)
+                      .fontColor($r('app.color.textPrimary'))
+                    Text(`${b.description || '未设置描述'} · ${this.symbol(b.currency)}${formatMoney(b.budgetAmount, 2)}`)
+                      .fontSize(12)
+                      .fontColor($r('app.color.textSecondary'))
+                  }
+                  .layoutWeight(1)
+                  .alignItems(HorizontalAlign.Start)
+
+                  // 删除按钮：Button 包裹保证足够点击热区（P0-3）
+                  Button() {
+                    Image($r('sys.media.ohos_ic_public_close'))
+                      .width(16)
+                      .height(16)
+                      .opacity(0.6)
+                  }
+                  .type(ButtonType.Normal)
+                  .width(40)
+                  .height(40)
+                  .backgroundColor(Color.Transparent)
+                  .onClick(() => {
+                    this.confirmDeleteBudget(b);
+                  })
+                }
+                .width('100%')
+                .height(56)
+                .padding({ left: 16, right: 16 })
+                .backgroundColor($r('app.color.cardBackgroundColor'))
+                .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
+              }
+            }, (b: Budget) => `budget_${b.id}`)
+          }
+          .layoutWeight(1)
+          .width('100%')
         }
-        .width('80%')
-        .padding(20)
-        .backgroundColor($r('app.color.cardBackgroundColor'))
-        .borderRadius(8)
-        .position({ x: '10%', y: '35%' })
       }
+      .width('100%')
+      .height('100%')
+      .backgroundColor($r('app.color.pageBackground'))
     }
-    .width('100%')
-    .height('100%')
+    .title('预算编制')
+    .menus([
+      {
+        value: '+',
+        action: () => {
+          this.openAddDialog();
+        }
+      }
+    ])
+    .onReady((context: NavDestinationContext) => {
+      this.pathStack = context.pathStack;
+    })
+    .onShown(() => {
+      this.load();
+    })
     .backgroundColor($r('app.color.pageBackground'))
   }
 

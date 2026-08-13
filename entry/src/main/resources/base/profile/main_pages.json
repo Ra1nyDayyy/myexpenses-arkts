@@ -9,8 +9,6 @@
     "pages/TagManage",
     "pages/AiAssistant",
     "pages/BalanceSheet",
-    "pages/Settings",
-    "pages/BudgetManage",
-    "pages/DebtManage"
+    "pages/Settings"
   ]
 }

@@ -1026,6 +1026,81 @@ export class Repository {
 
   // ==================== 模板 ====================
 
+  /**
+   * 读取单个模板（模板编辑页使用，填充展示字段）
+   */
+  async getTemplate(id: number): Promise<Template | null> {
+    const predicates = new relationalStore.RdbPredicates('templates');
+    predicates.equalTo('id', id);
+    const result = await this.store().query(predicates);
+    try {
+      if (result.goToNextRow()) {
+        const tpl = new Template();
+        tpl.id = result.getLong(result.getColumnIndex('id'));
+        tpl.title = result.getString(result.getColumnIndex('title'));
+        tpl.comment = result.getString(result.getColumnIndex('comment'));
+        tpl.amount = result.getLong(result.getColumnIndex('amount'));
+        tpl.accountId = result.getLong(result.getColumnIndex('account_id'));
+        const catIdx = result.getColumnIndex('cat_id');
+        tpl.categoryId = result.isColumnNull(catIdx) ? -1 : result.getLong(catIdx);
+        const payeeIdx = result.getColumnIndex('payee_id');
+        tpl.payeeId = result.isColumnNull(payeeIdx) ? -1 : result.getLong(payeeIdx);
+        const methodIdx = result.getColumnIndex('method_id');
+        tpl.methodId = result.isColumnNull(methodIdx) ? -1 : result.getLong(methodIdx);
+        const transferIdx = result.getColumnIndex('transfer_account');
+        tpl.transferAccountId = result.isColumnNull(transferIdx) ? -1 : result.getLong(transferIdx);
+        tpl.parentId = result.getLong(result.getColumnIndex('parent_id'));
+        tpl.uuid = result.getString(result.getColumnIndex('uuid'));
+        tpl.isIncome = result.getLong(result.getColumnIndex('is_income')) === 1;
+        const recIdx = result.getColumnIndex('recurrence');
+        tpl.recurrence = result.isColumnNull(recIdx) ? 0 : result.getLong(recIdx);
+        const dtIdx = result.getColumnIndex('dt_start');
+        tpl.dtStart = result.isColumnNull(dtIdx) ? 0 : result.getLong(dtIdx);
+        const lastIdx = result.getColumnIndex('last_executed');
+        tpl.lastExecuted = result.isColumnNull(lastIdx) ? 0 : result.getLong(lastIdx);
+        const autoIdx = result.getColumnIndex('auto_execute');
+        tpl.autoExecute = !result.isColumnNull(autoIdx) && result.getLong(autoIdx) === 1;
+        const advIdx = result.getColumnIndex('advance_days');
+        tpl.advanceDays = result.isColumnNull(advIdx) ? 0 : result.getLong(advIdx);
+        // 填充展示字段
+        const acc = await this.getAccount(tpl.accountId);
+        if (acc) {
+          tpl.currency = acc.currency;
+          tpl.accountLabel = acc.label;
+          tpl.accountColor = acc.color;
+        }
+        if (tpl.transferAccountId >= 0) {
+          const tAcc = await this.getAccount(tpl.transferAccountId);
+          if (tAcc) {
+            tpl.transferAccountLabel = tAcc.label;
+          }
+        }
+        if (tpl.categoryId >= 0) {
+          const cat = await this.getCategory(tpl.categoryId);
+          if (cat) {
+            tpl.categoryPath = cat.label;
+          }
+        }
+        if (tpl.payeeId >= 0) {
+          const payee = await this.getPayee(tpl.payeeId);
+          if (payee) {
+            tpl.payeeName = payee.name;
+          }
+        }
+        if (tpl.methodId >= 0) {
+          const method = await this.getPaymentMethod(tpl.methodId);
+          if (method) {
+            tpl.methodLabel = method.label;
+          }
+        }
+        return tpl;
+      }
+      return null;
+    } finally {
+      result.close();
+    }
+  }
+
   async getTemplates(): Promise<Template[]> {
     const predicates = new relationalStore.RdbPredicates('templates');
     predicates.orderByDesc('id');
@@ -1088,6 +1163,14 @@ export class Repository {
       const acc = await this.getAccount(tpl.accountId);
       if (acc) {
         tpl.currency = acc.currency;
+        tpl.accountLabel = acc.label;
+        tpl.accountColor = acc.color;
+      }
+      if (tpl.transferAccountId >= 0) {
+        const tAcc = await this.getAccount(tpl.transferAccountId);
+        if (tAcc) {
+          tpl.transferAccountLabel = tAcc.label;
+        }
       }
     }
     return list;
