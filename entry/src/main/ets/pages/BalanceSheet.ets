@@ -3,6 +3,7 @@ import { Repository } from '../database/Repository';
 import { PageHeader } from '../components/PageHeader';
 import { router, promptAction, componentUtils } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
+import { BusinessError } from '@kit.BasicServicesKit';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
 import { formatMoney } from '../model/Money';
 import { currencyByCode } from '../model/CurrencyUnit';
@@ -34,18 +35,35 @@ interface ChartGeom {
  * - 日期右上角带下划线，点击弹出日期选择器
  * - 右上角设置菜单（对齐安卓 BalanceSheetOptions）：导出 PDF / 显示隐藏账户 / 显示零余额账户
  */
-@Entry
+/**
+ * 资产负债表视图（可复用组件）
+ * - 独立页面（pages/BalanceSheet）与账户页内嵌两种模式：
+ *   embedded=true 时由宿主（Index 账户 Tab）提供标题栏，本组件只渲染
+ *   日期行（含图表/更多操作）+ 图表 + 明细；账户行点击通过 onNavigateAccount 回调，
+ *   不再依赖 router.back。
+ */
 @Component
-struct BalanceSheet {
+export struct BalanceSheetView {
+  /** 内嵌模式：不渲染 PageHeader，操作按钮（打印/选项）由宿主 headerBar 提供 */
+  @Prop embedded: boolean = false;
+  /** 内嵌模式账户行点击回调（替代独立页面的 AppStorage + router.back） */
+  onNavigateAccount: (id: number) => void = (id: number) => {
+  };
+  /** 打印指令计数：宿主 headerBar 点击打印图标时递增，触发 PDF 导出（对齐安卓 onPrint） */
+  @Link @Watch('onPrintTickChange') printTick: number;
+
+
   @State accounts: Account[] = [];
   @State assets: number = 0;
   @State liabilities: number = 0;
   @State netWorth: number = 0;
-  @State showHidden: boolean = false;
-  @State showZero: boolean = false;
+  /** 显示隐藏账户开关（内嵌模式由宿主 headerBar 菜单控制，独立页面本地维护） */
+  @Link showHidden: boolean;
+  /** 显示零余额账户开关（内嵌模式由宿主 headerBar 菜单控制，独立页面本地维护） */
+  @Link showZero: boolean;
   @State exporting: boolean = false;
-  /** 显示双环甜甜圈图（对齐安卓 BalanceSheetOptions 图表开关） */
-  @State showChart: boolean = false;
+  /** 显示双环甜甜圈图（对齐安卓 BalanceSheetOptions 图表开关；内嵌模式由宿主 headerBar 菜单控制） */
+  @Link showChart: boolean;
   /** 高亮的扇区：inner=是否负债环, index=环内索引, id=账户 id（对齐安卓 highlight: Triple<Boolean, Int, Long?>） */
   @State highlight: HighlightInfo | null = null;
   /** 图表 Canvas 尺寸（onReady 后更新，用于命中检测） */
@@ -70,7 +88,9 @@ struct BalanceSheet {
   }
 
   onPageShow(): void {
-    this.load();
+    if (!this.embedded) {
+      this.load();
+    }
   }
 
   async load(): Promise<void> {
@@ -610,18 +630,12 @@ struct BalanceSheet {
     this.getUIContext().showDatePickerDialog(pickerOptions);
   }
 
-  /** 右上角设置菜单（对齐安卓 BalanceSheetOptions） */
-  private showOptionsMenu(): void {
-    const sheets: Array<SheetInfo> = [];
-    sheets.push({
-      title: '导出为 PDF',
-      action: () => {
-        this.exportToPdf();
-      }
-    } as SheetInfo);
+  /** 选项下拉菜单（对齐安卓 BalanceSheetOptions TooltipIconMenu：显示隐藏账户/显示零余额账户/显示图表） */
+  private optionsMenu(): Array<MenuElement> {
+    const menu: Array<MenuElement> = [];
     if (this.hasHiddenAccounts()) {
-      sheets.push({
-        title: (this.showHidden ? '✓ ' : '') + '显示隐藏账户',
+      menu.push({
+        value: (this.showHidden ? '✓ ' : '') + '显示隐藏账户',
         action: () => {
           this.showHidden = !this.showHidden;
           this.highlight = null;
@@ -629,11 +643,11 @@ struct BalanceSheet {
             this.drawChart();
           }
         }
-      } as SheetInfo);
+      } as MenuElement);
     }
     if (this.hasZeroAccounts()) {
-      sheets.push({
-        title: (this.showZero ? '✓ ' : '') + '显示零余额账户',
+      menu.push({
+        value: (this.showZero ? '✓ ' : '') + '显示零余额账户',
         action: () => {
           this.showZero = !this.showZero;
           this.highlight = null;
@@ -641,8 +655,41 @@ struct BalanceSheet {
             this.drawChart();
           }
         }
-      } as SheetInfo);
+      } as MenuElement);
     }
+    // 显示图表（对齐安卓 CheckableMenuEntry 图表开关）
+    menu.push({
+      value: (this.showChart ? '✓ ' : '') + '显示图表',
+      action: () => {
+        this.toggleChart();
+      }
+    } as MenuElement);
+    return menu;
+  }
+
+  /** 打印指令 @Watch：宿主 headerBar 点击打印图标后触发 PDF 导出（对齐安卓 onPrint） */
+  private onPrintTickChange(): void {
+    if (this.printTick > 0) {
+      this.exportToPdf();
+    }
+  }
+
+
+  /** 独立页面更多菜单（对齐安卓 BalanceSheetOptions + 导出入口） */
+  private showOptionsSheet(): void {
+    const sheets: Array<SheetInfo> = [];
+    this.optionsMenu().forEach((m: MenuElement) => {
+      sheets.push({
+        title: m.value,
+        action: m.action
+      } as SheetInfo);
+    });
+    sheets.push({
+      title: '导出为 PDF',
+      action: () => {
+        this.exportToPdf();
+      }
+    } as SheetInfo);
     const options: ActionSheetOptions = {
       title: '资产负债表',
       message: '请选择操作',
@@ -665,6 +712,15 @@ struct BalanceSheet {
     const mm = (d.getMonth() + 1).toString().padStart(2, '0');
     const dd = d.getDate().toString().padStart(2, '0');
     return `${d.getFullYear()}-${mm}-${dd}`;
+  }
+
+  /** 文件名带时间戳（避免同名文件导致保存失败，对齐安卓导出行为） */
+  private exportFileName(): string {
+    const d = new Date();
+    const hh = d.getHours().toString().padStart(2, '0');
+    const mi = d.getMinutes().toString().padStart(2, '0');
+    const ss = d.getSeconds().toString().padStart(2, '0');
+    return `资产负债表_${this.dateStamp()}_${hh}${mi}${ss}`;
   }
 
   /** 用离屏 Canvas 渲染资产负债表为 JPEG 字节（A4 @ 150DPI = 1240x1754） */
@@ -787,24 +843,31 @@ struct BalanceSheet {
 
       // 保存到应用沙箱
       const ctx = getContext(this) as common.UIAbilityContext;
-      const tempPath = `${ctx.filesDir}/BalanceSheet_${this.dateStamp()}.pdf`;
+      const tempPath = `${ctx.filesDir}/${this.exportFileName()}.pdf`;
       const file = fs.openSync(tempPath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
       fs.writeSync(file.fd, pdf.buffer as ArrayBuffer);
       fs.closeSync(file.fd);
+      console.info(`[BalanceSheet] temp pdf written: ${tempPath}, size=${pdf.length}`);
 
       // 引导用户选择保存位置（对齐安卓创建文件）
       const savePicker = new picker.DocumentViewPicker(ctx);
       const opts = new picker.DocumentSaveOptions();
-      opts.newFileNames = [`资产负债表_${this.dateStamp()}.pdf`];
+      opts.newFileNames = [`${this.exportFileName()}.pdf`];
       const uris = await savePicker.save(opts);
+      console.info(`[BalanceSheet] save picker result: ${JSON.stringify(uris)}`);
       if (uris && uris.length > 0) {
-        await fs.copyFile(tempPath, uris[0]);
+        // 直接打开 picker 返回的 URI 写入 PDF 内容（标准做法；目标重名时由 picker 提示处理）
+        const destFile = fs.openSync(uris[0], fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
+        fs.writeSync(destFile.fd, pdf.buffer as ArrayBuffer);
+        fs.closeSync(destFile.fd);
+        console.info(`[BalanceSheet] pdf saved to ${uris[0]}`);
         promptAction.showToast({ message: '已导出 PDF' });
       } else {
         promptAction.showToast({ message: '已取消导出' });
       }
     } catch (err) {
-      console.error(`[BalanceSheet] export pdf error: ${JSON.stringify(err)}`);
+      const e = err as BusinessError;
+      console.error(`[BalanceSheet] export pdf error code=${e.code} msg=${e.message} full=${JSON.stringify(err)}`);
       promptAction.showToast({ message: '导出 PDF 失败' });
     } finally {
       this.exporting = false;
@@ -815,24 +878,27 @@ struct BalanceSheet {
 
   build() {
     Column() {
-      PageHeader({
-        title: '资产负债表',
-        showMore: true,
-        showChart: true,
-        onBack: () => {
-          router.back();
-        },
-        onMore: () => {
-          this.showOptionsMenu();
-        },
-        onChart: () => {
-          this.toggleChart();
-        }
-      })
+      // 独立页面模式：完整 PageHeader（含返回/图表/更多）
+      if (!this.embedded) {
+        PageHeader({
+          title: '资产负债表',
+          showMore: true,
+          showChart: true,
+          onBack: () => {
+            router.back();
+          },
+          onMore: () => {
+            this.showOptionsSheet();
+          },
+          onChart: () => {
+            this.toggleChart();
+          }
+        })
+      }
 
       // 固定区：日期 + 图表（不随明细滚动，对齐安卓：图表固定、明细 LazyColumn 滚动）
       Column() {
-        // 日期（右上角带下划线，对齐安卓）
+        // 日期（右上角带下划线，对齐安卓）；内嵌模式右侧并入打印/选项操作（对齐安卓 BalanceSheetOptions）
         Row() {
           Blank()
           Text(formatDate(this.date))
@@ -843,6 +909,7 @@ struct BalanceSheet {
             .onClick(() => {
               this.showDatePicker();
             })
+
         }
         .width('100%')
         .padding({ top: 6, bottom: 2 })
@@ -919,7 +986,8 @@ struct BalanceSheet {
 
   /** 章节头：大标题加粗 + 总额（对齐安卓 BalanceSheetSectionHeaderView titleLarge Bold）
    *  注意：金额必须从 @State 直接读取（@Builder 按值传参不会随 @State 更新刷新），
-   *  故不通过参数传入 total，而是在内部按 name 直接读取 this.assets/liabilities/netWorth */
+   *  故不通过参数传入 total，而是在内部按 name 直接读取 this.assets/liabilities/netWorth。
+   *  资产/负债章节显示绝对值（对齐安卓 absolute=true），净资产显示实际值（absolute=false）。 */
   @Builder
   chapterHeader(name: string, positive: boolean) {
     Row() {
@@ -927,7 +995,8 @@ struct BalanceSheet {
         .fontSize(20)
         .fontWeight(FontWeight.Bold)
         .layoutWeight(1)
-      Text(this.amountText(name === '资产' ? this.assets : (name === '负债' ? this.liabilities : this.netWorth), false))
+      Text(this.amountText(name === '资产' ? this.assets : (name === '负债' ? this.liabilities : this.netWorth),
+        name !== '净资产'))
         .fontSize(20)
         .fontWeight(FontWeight.Bold)
         .fontColor(positive ? $r('app.color.colorIncome') : $r('app.color.colorExpense'))
@@ -968,12 +1037,44 @@ struct BalanceSheet {
         .backgroundColor(this.highlight !== null && this.highlight.id === acc.id
           ? $r('app.color.primaryContainer') : Color.Transparent)
         .onClick(() => {
-          // 点击账户行：返回主界面并跳转到该账户交易页（对齐安卓 onNavigate(account)）
-          AppStorage.setOrCreate('balanceSheetTargetAccountId', acc.id);
-          router.back();
+          // 点击账户行：跳转到该账户交易页（对齐安卓 onNavigate(account)）
+          if (this.embedded) {
+            this.onNavigateAccount(acc.id);
+          } else {
+            AppStorage.setOrCreate('balanceSheetTargetAccountId', acc.id);
+            router.back();
+          }
         })
       }, (acc: Account) => `acc_${type}_${acc.id}`)
     }
     .width('100%')
+  }
+}
+
+/**
+ * 独立页面入口：更多菜单等通过 router 跳转 pages/BalanceSheet 时使用
+ * （完整 PageHeader，含返回按钮）
+ */
+@Entry
+@Component
+struct BalanceSheet {
+  /** 独立页面模式不需要宿主触发的打印指令，提供空状态占位 */
+  @State printTick: number = 0;
+  @State showHidden: boolean = false;
+  @State showZero: boolean = false;
+  @State showChart: boolean = false;
+
+  build() {
+    Column() {
+      BalanceSheetView({
+        embedded: false,
+        printTick: this.printTick,
+        showHidden: this.showHidden,
+        showZero: this.showZero,
+        showChart: this.showChart
+      })
+    }
+    .width('100%')
+    .height('100%')
   }
 }

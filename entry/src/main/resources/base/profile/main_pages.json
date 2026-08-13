@@ -7,7 +7,9 @@
     "pages/CategorySelect",
     "pages/MethodManage",
     "pages/TagManage",
+    "pages/TagSelect",
     "pages/AiAssistant",
+    "pages/SearchPage",
     "pages/BalanceSheet",
     "pages/Settings"
   ]

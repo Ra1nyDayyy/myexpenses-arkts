@@ -66,6 +66,7 @@ export class PREF_KEY {
   static readonly GROUPING: string = 'grouping';
   static readonly SORT_BY: string = 'sort_by';
   static readonly SORT_DIRECTION: string = 'sort_direction';
+  static readonly SORT_ACCOUNT_LIST_BY_FLAG_FIRST: string = 'sort_account_list_by_flag_first';
   static readonly SHOW_EQUIVALENT: string = 'show_equivalent_value';
   static readonly SHOW_STATUS: string = 'show_status_handle';
   static readonly WEEK_START: string = 'week_start';

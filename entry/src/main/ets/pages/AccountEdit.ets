@@ -3,6 +3,8 @@ import { Repository } from '../database/Repository';
 import { Tag } from '../model/SupportEntities';
 import { CurrencyUnit, COMMON_CURRENCIES } from '../model/CurrencyUnit';
 import { PageHeader } from '../components/PageHeader';
+import { CalculatorDialog } from '../components/CalculatorDialog';
+import { AccountColorDialog } from '../components/ColorPickerDialog';
 import { parseMoney, formatMoney } from '../model/Money';
 import { generateUuid } from '../common/FormatUtils';
 import { router, promptAction } from '@kit.ArkUI';
@@ -23,11 +25,54 @@ struct AccountEdit {
   @State criterionInput: string = '';
   @State tags: Tag[] = [];
   @State accountTagIds: number[] = [];
+  /** 不计入总计（对齐安卓 EXCLUDE_FROM_TOTALS_COMMAND） */
+  @State excludeFromTotals: boolean = false;
+  /** 动态汇率（对齐安卓 DYNAMIC_EXCHANGE_RATE_COMMAND，仅外币账户） */
+  @State dynamicExchangeRates: boolean = false;
+  /** 起始余额正负开关（对齐安卓 type_switch：true=+收入 false=−支出，默认+） */
+  @State openingPositive: boolean = true;
+  /** 储蓄目标/信用额度正负开关（对齐安卓 type_switch，默认−支出） */
+  @State criterionPositive: boolean = false;
+  /** 默认本币（用于判断是否外币账户） */
+  private defaultCurrency: string = 'CNY';
+  /** 当前编辑中账户货币（用于动态汇率判断） */
+  private get homeCurrency(): string {
+    return this.defaultCurrency;
+  }
+  /** 当前正在编辑的金额字段（opening/criterion），计算器结果写入对应字段 */
+  private amountTarget: string = 'opening';
+  private calculator: CustomDialogController = new CustomDialogController({
+    builder: CalculatorDialog({
+      onResult: (value: string) => {
+        if (this.amountTarget === 'opening') {
+          this.openingBalanceInput = value;
+        } else {
+          this.criterionInput = value;
+        }
+      }
+    }),
+    autoCancel: true,
+    alignment: DialogAlignment.Bottom,
+    customStyle: true,
+    cornerRadius: 16
+  });
+  private colorDialog: CustomDialogController = new CustomDialogController({
+    builder: AccountColorDialog({
+      color: 0xFFC107,
+      onResult: (c: number) => {
+        this.color = c;
+      }
+    }),
+    autoCancel: true,
+    alignment: DialogAlignment.Center,
+    customStyle: true,
+    cornerRadius: 16
+  });
 
   private repository: Repository = Repository.getInstance();
   private currencies: CurrencyUnit[] = COMMON_CURRENCIES;
   private accountTypes: AccountType[] = [AccountType.BANK, AccountType.CASH, AccountType.CCARD, AccountType.ASSET, AccountType.LIABILITY];
-  private colorOptions: number[] = [0xFFC107, 0x0050A7, 0x008000, 0x800000, 0x800080, 0x008080, 0x808000, 0x000080];
+
 
   aboutToAppear(): void {
     const params = router.getParams() as Record<string, Object>;
@@ -57,12 +102,15 @@ struct AccountEdit {
     if (acc) {
       this.label = acc.label;
       this.description = acc.description;
-      this.openingBalanceInput = formatMoney(acc.openingBalance, this.fractionDigits());
+      this.openingBalanceInput = formatMoney(Math.abs(acc.openingBalance), this.fractionDigits());
+      this.openingPositive = acc.openingBalance >= 0;
       this.currency = acc.currency;
       this.type = acc.type;
       this.color = acc.color;
-      if (acc.criterion > 0) {
-        this.criterionInput = formatMoney(acc.criterion, this.fractionDigits());
+      this.excludeFromTotals = acc.excludeFromTotals;
+      if (acc.criterion !== 0) {
+        this.criterionInput = formatMoney(Math.abs(acc.criterion), this.fractionDigits());
+        this.criterionPositive = acc.criterion >= 0;
       }
     }
   }
@@ -76,6 +124,47 @@ struct AccountEdit {
     const c = this.currencies.find((item: CurrencyUnit) => item.code === this.currency);
     return c ? c.symbol : '¥';
   }
+
+  /** 打开金额计算器（对齐安卓 AmountInput 的计算器按钮，target: opening/criterion） */
+  private showAmountCalculator(target: string): void {
+    this.amountTarget = target;
+    const current = target === 'opening' ? this.openingBalanceInput : this.criterionInput;
+    this.calculator = new CustomDialogController({
+      builder: CalculatorDialog({
+        display: current || '0',
+        onResult: (value: string) => {
+          if (target === 'opening') {
+            this.openingBalanceInput = value;
+          } else {
+            this.criterionInput = value;
+          }
+        }
+      }),
+      autoCancel: true,
+      alignment: DialogAlignment.Bottom,
+      customStyle: true,
+      cornerRadius: 16
+    });
+    this.calculator.open();
+  }
+
+  /** 打开颜色选择对话框（对齐安卓 SimpleColorDialog：常用色板 + 调色盘） */
+  private showColorDialog(): void {
+    this.colorDialog = new CustomDialogController({
+      builder: AccountColorDialog({
+        color: this.color,
+        onResult: (c: number) => {
+          this.color = c;
+        }
+      }),
+      autoCancel: true,
+      alignment: DialogAlignment.Center,
+      customStyle: true,
+      cornerRadius: 16
+    });
+    this.colorDialog.open();
+  }
+
 
   private typeName(t: AccountType): string {
     return Account.typeName(t);
@@ -111,11 +200,20 @@ struct AccountEdit {
     acc.id = this.accountId;
     acc.label = this.label.trim();
     acc.description = this.description.trim();
-    acc.openingBalance = parseMoney(this.openingBalanceInput, this.fractionDigits());
+    let opening = parseMoney(this.openingBalanceInput, this.fractionDigits());
+    if (!this.openingPositive) {
+      opening = -opening;
+    }
+    acc.openingBalance = opening;
     acc.currency = this.currency;
     acc.type = this.type;
     acc.color = this.color;
-    acc.criterion = parseMoney(this.criterionInput, this.fractionDigits());
+    acc.excludeFromTotals = this.excludeFromTotals;
+    let criterion = parseMoney(this.criterionInput, this.fractionDigits());
+    if (!this.criterionPositive) {
+      criterion = -criterion;
+    }
+    acc.criterion = criterion;
     acc.uuid = this.accountId > 0 ? acc.uuid : generateUuid();
 
     try {
@@ -130,6 +228,94 @@ struct AccountEdit {
         await this.repository.setAccountTagIds(savedId, this.accountTagIds);
       }
       promptAction.showToast({ message: $r('app.string.toast_save_success') });
+      router.back();
+    } catch (e) {
+      promptAction.showToast({ message: $r('app.string.toast_save_failed') });
+    }
+  }
+
+  /** 表单字段帮助说明（对齐安卓：点击帮助图标显示各字段说明） */
+  private showFieldHelp(): void {
+    const sheets: Array<SheetInfo> = [];
+    sheets.push({
+      title: '文本标签：标签用于标识账户列表中的账户',
+      action: () => {
+      }
+    } as SheetInfo);
+    sheets.push({
+      title: '描述：此项描述仅为信息告知目的',
+      action: () => {
+      }
+    } as SheetInfo);
+    sheets.push({
+      title: '起始余额：使用该开关，从负的期初余额开始。该按钮可打开计算器',
+      action: () => {
+      }
+    } as SheetInfo);
+    sheets.push({
+      title: '货币：从已提供的所有当前币种列表中选择币种',
+      action: () => {
+      }
+    } as SheetInfo);
+    sheets.push({
+      title: '类型：您可以将账户类型定义为现金、银行、资产、负债或信用卡',
+      action: () => {
+      }
+    } as SheetInfo);
+    sheets.push({
+      title: '颜色：在账户交易列表，此颜色将作为用户界面的主题色',
+      action: () => {
+      }
+    } as SheetInfo);
+    sheets.push({
+      title: '活跃标签：您可以将一个或多个活动标签与每个账户进行关联。当您创建一个新的交易时，基于所选的账户自动对该交易进行标记',
+      action: () => {
+      }
+    } as SheetInfo);
+    const options: ActionSheetOptions = {
+      title: '用于账户的表单',
+      message: '表单字段',
+      confirm: {
+        value: '确定',
+        action: () => {
+        }
+      },
+      sheets: sheets
+    };
+    this.getUIContext().showActionSheet(options);
+  }
+
+  /** 更多选项菜单（对齐安卓 AccountEdit 工具栏更多菜单：不计入总数 + 动态汇率） */
+  /** 更多按钮下拉菜单（对齐安卓 account_edit.xml 工具栏菜单：在按钮附近展开，非弹窗） */
+  private accountMoreMenu(): Array<MenuElement> {
+    const menu: Array<MenuElement> = [];
+    menu.push({
+      value: (this.excludeFromTotals ? '✓ ' : '') + '不计入总数',
+      action: () => {
+        this.excludeFromTotals = !this.excludeFromTotals;
+      }
+    } as MenuElement);
+    // 动态汇率（对齐安卓 DYNAMIC_EXCHANGE_RATE_COMMAND，仅外币账户显示）
+    if (this.currency !== this.homeCurrency) {
+      menu.push({
+        value: (this.dynamicExchangeRates ? '✓ ' : '') + '动态汇率',
+        action: () => {
+          this.dynamicExchangeRates = !this.dynamicExchangeRates;
+        }
+      } as MenuElement);
+    }
+    return menu;
+  }
+
+  /** 更多按钮回调（无下拉菜单时触发，兼容） */
+  private showMoreMenu(): void {
+  }
+
+  /** 删除当前账户 */
+  private async deleteAccount(): Promise<void> {
+    try {
+      await this.repository.deleteAccount(this.accountId);
+      promptAction.showToast({ message: $r('app.string.toast_deleted') });
       router.back();
     } catch (e) {
       promptAction.showToast({ message: $r('app.string.toast_save_failed') });
@@ -151,15 +337,21 @@ struct AccountEdit {
   }
 
   build() {
+    Stack() {
     Column() {
       PageHeader({
         title: this.accountId > 0 ? '编辑账户' : '新建账户',
-        rightText: '保存',
+        showHelp: true,
+        showMore: true,
+        moreMenu: this.accountMoreMenu(),
         onBack: () => {
           router.back();
         },
-        onRight: () => {
-          this.save();
+        onHelp: () => {
+          this.showFieldHelp();
+        },
+        onMore: () => {
+          this.showMoreMenu();
         }
       })
 
@@ -197,21 +389,37 @@ struct AccountEdit {
           .height(48)
           .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
 
-          // 起始余额
+          // 起始余额（对齐安卓 AmountInput：+/− 类型开关 + 计算器按钮）
           Row() {
             Text('起始余额')
               .fontSize(14)
               .fontColor($r('app.color.textPrimary'))
               .width('30%')
-            Text(this.currencySymbol())
-              .fontSize(16)
-              .fontColor($r('app.color.textSecondary'))
-              .margin({ right: 6 })
+            // 收入/支出类型开关（对齐安卓 type_switch：textOn="+" textOff="−"）
+            Toggle({ type: ToggleType.Switch, isOn: this.openingPositive })
+              .selectedColor($r('app.color.colorIncome'))
+              .switchPointColor(Color.White)
+              .onChange((isOn: boolean) => {
+                this.openingPositive = isOn;
+              })
+            Text(this.openingPositive ? '+' : '−')
+              .fontSize(14)
+              .fontWeight(FontWeight.Bold)
+              .fontColor(this.openingPositive ? $r('app.color.colorIncome') : $r('app.color.colorExpense'))
+              .margin({ left: 4 })
             TextInput({ placeholder: '0.00', text: this.openingBalanceInput })
               .type(InputType.Number)
               .layoutWeight(1)
               .onChange((v: string) => {
                 this.openingBalanceInput = v;
+              })
+            Image($r('app.media.ic_calculate'))
+              .width(20)
+              .height(20)
+              .fillColor($r('app.color.textSecondary'))
+              .margin({ left: 8 })
+              .onClick(() => {
+                this.showAmountCalculator('opening');
               })
           }
           .width('100%')
@@ -258,35 +466,35 @@ struct AccountEdit {
           .height(48)
           .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
 
-          // 颜色
+          // 颜色（对齐安卓 color_input：色块 + 铅笔编辑图标，点击打开色板）
           Row() {
             Text('颜色')
               .fontSize(14)
               .fontColor($r('app.color.textPrimary'))
               .width('30%')
             Row() {
-              ForEach(this.colorOptions, (c: number) => {
-                Stack() {
-                  Circle()
-                    .width(this.color === c ? 32 : 28)
-                    .height(this.color === c ? 32 : 28)
-                    .fill(this.colorToHex(c))
-                    .stroke(this.color === c ? $r('app.color.primaryColor') : Color.Transparent)
-                    .strokeWidth(3)
-                }
-                .width(38)
-                .height(38)
-                .alignContent(Alignment.Center)
+              // 当前色块
+              Circle()
+                .width(24)
+                .height(24)
+                .fill(this.colorToHex(this.color))
+                .stroke($r('app.color.dividerColor'))
+                .strokeWidth(1)
+              // 铅笔编辑图标（对齐安卓 ic_menu_edit，点击打开颜色对话框）
+              Image($r('app.media.ic_color_edit'))
+                .width(20)
+                .height(20)
+                .fillColor($r('app.color.textSecondary'))
+                .margin({ left: 10 })
                 .onClick(() => {
-                  this.color = c;
+                  this.showColorDialog();
                 })
-              }, (c: number) => `color_${c}`)
             }
             .layoutWeight(1)
             .justifyContent(FlexAlign.End)
           }
           .width('100%')
-          .height(56)
+          .height(48)
           .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
 
           // 标签（对齐安卓 tag_row：位于颜色与储蓄目标之间，行末加号跳转标签管理页）
@@ -342,21 +550,37 @@ struct AccountEdit {
           .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
           .alignItems(VerticalAlign.Top)
 
-          // 储蓄目标/信用额度
+          // 储蓄目标/信用额度（对齐安卓 AmountInput：+/− 类型开关 + 计算器按钮）
           Row() {
             Text(this.type === AccountType.CCARD || this.type === AccountType.LIABILITY ? '信用额度' : '储蓄目标')
               .fontSize(14)
               .fontColor($r('app.color.textPrimary'))
               .width('30%')
-            Text(this.currencySymbol())
-              .fontSize(16)
-              .fontColor($r('app.color.textSecondary'))
-              .margin({ right: 6 })
+            // 收入/支出类型开关（对齐安卓 type_switch：textOn="+" textOff="−"）
+            Toggle({ type: ToggleType.Switch, isOn: this.criterionPositive })
+              .selectedColor($r('app.color.colorIncome'))
+              .switchPointColor(Color.White)
+              .onChange((isOn: boolean) => {
+                this.criterionPositive = isOn;
+              })
+            Text(this.criterionPositive ? '+' : '−')
+              .fontSize(14)
+              .fontWeight(FontWeight.Bold)
+              .fontColor(this.criterionPositive ? $r('app.color.colorIncome') : $r('app.color.colorExpense'))
+              .margin({ left: 4 })
             TextInput({ placeholder: '0.00', text: this.criterionInput })
               .type(InputType.Number)
               .layoutWeight(1)
               .onChange((v: string) => {
                 this.criterionInput = v;
+              })
+            Image($r('app.media.ic_calculate'))
+              .width(20)
+              .height(20)
+              .fillColor($r('app.color.textSecondary'))
+              .margin({ left: 8 })
+              .onClick(() => {
+                this.showAmountCalculator('criterion');
               })
           }
           .width('100%')
@@ -370,6 +594,30 @@ struct AccountEdit {
       // 内容从页面顶部开始（对齐安卓 NestedScrollView 表单贴工具栏下方）
       // Scroll 默认 align 为 Center，内容高度小于视口时会被垂直居中，需显式顶部对齐
       .align(Alignment.Top)
+    }
+    .width('100%')
+    .height('100%')
+
+    // 右下角保存 FAB（对齐安卓：圆角矩形 + 对勾图标）
+    Stack() {
+      Row() {
+        Image($r('app.media.ic_check'))
+          .width(24)
+          .height(24)
+          .fillColor(Color.White)
+      }
+      .width(88)
+      .height(52)
+      .borderRadius(26)
+      .justifyContent(FlexAlign.Center)
+      .backgroundColor($r('app.color.primaryColor'))
+      .shadow({ radius: 8, color: '#40000000', offsetY: 4 })
+      .onClick(() => {
+        this.save();
+      })
+    }
+    .markAnchor({ x: '100%', y: '100%' })
+    .position({ x: '92%', y: '94%' })
     }
     .width('100%')
     .height('100%')

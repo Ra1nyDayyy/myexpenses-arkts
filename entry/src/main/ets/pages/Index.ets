@@ -10,8 +10,13 @@ import { EmptyState } from '../components/EmptyState';
 import { formatMoney } from '../model/Money';
 import { currencyByCode } from '../model/CurrencyUnit';
 import { router, promptAction } from '@kit.ArkUI';
+import { pasteboard } from '@kit.BasicServicesKit';
+import { common } from '@kit.AbilityKit';
 import { BudgetManage } from './BudgetManage';
 import { DebtManage } from './DebtManage';
+import { BalanceSheetView } from './BalanceSheet';
+import { SortDialog } from '../components/SortDialog';
+import { AccountDetailDialog } from '../components/AccountDetailDialog';
 
 /**
  * 主界面（V2）：对应 Android MyExpensesV2 + MainScreen
@@ -22,6 +27,28 @@ import { DebtManage } from './DebtManage';
 struct Index {
   @State accounts: Account[] = [];
   @State selectedTab: number = 0; // 0 账户 1 交易 2 更多
+  /** 账户 Tab 内视图：0=账户列表，1=资产负债表（对齐安卓 AccountsScreenTab，点击左上角标题下拉切换） */
+  @State accountView: number = 0;
+  /** 资产负债表打印指令计数：headerBar 点击打印图标时递增，触发 BalanceSheetView 导出 PDF */
+  @State bsPrintTick: number = 0;
+
+  /** 资产负债表显示隐藏账户开关（对齐安卓 BalanceSheetOptions） */
+  @State bsShowHidden: boolean = false;
+  /** 资产负债表显示零余额账户开关（对齐安卓 BalanceSheetOptions） */
+  @State bsShowZero: boolean = false;
+  /** 资产负债表显示图表开关（对齐安卓 BalanceSheetOptions） */
+  @State bsShowChart: boolean = false;
+  /** 账户页 FAB 展开菜单（对齐安卓 FloatingActionButtonMenu：新建账户/新建资产组合） */
+  @State accountFabExpanded: boolean = false;
+  /** 账户排序方式（对齐安卓 Sort.accountSort：LABEL/USAGES/LAST_USED/CUSTOM） */
+  @State accountSortBy: string = 'label';
+  /** 优先标记顺序（对齐安卓 SORT_ACCOUNT_LIST_BY_FLAG_FIRST） */
+  @State sortByFlagFirst: boolean = false;
+  /** 排序弹窗当前选中排序（临时，确定时保存） */
+  @State sortPickerSelection: string = 'label';
+  /** 排序弹窗当前优先标记顺序（临时） */
+  @State sortPickerFlagFirst: boolean = false;
+
   @State loading: boolean = true;
   @State grouping: AccountGrouping = AccountGrouping.NONE;
   @State showEquivalent: boolean = false;
@@ -32,6 +59,8 @@ struct Index {
   @State isSelectionMode: boolean = false;
   @State selectedTransactionIds: number[] = [];
   @State templates: Template[] = [];
+  /** 模板筛选：-1=全部，0=不重复，2=每天，3=每周，4=每月，6=每年（对齐安卓模板计划筛选） */
+  @State templateFilter: number = -1;
   @State tags: Tag[] = [];
   // 当前交易列表（响应式数据源：切换账户时整体重新赋值触发列表重渲染）
   @State currentTransactions: Transaction[] = [];
@@ -74,10 +103,15 @@ struct Index {
     try {
       const grouping = await this.settings.getNumber(PREF_KEY.GROUPING, AccountGrouping.TYPE);
       const showEquivalent = await this.settings.getBoolean(PREF_KEY.SHOW_EQUIVALENT, false);
+      const savedSort = await this.settings.getString(PREF_KEY.SORT_BY, 'label');
+      const flagFirst = await this.settings.getBoolean(PREF_KEY.SORT_ACCOUNT_LIST_BY_FLAG_FIRST, false);
       this.grouping = grouping as AccountGrouping;
       this.showEquivalent = showEquivalent;
+      this.accountSortBy = savedSort;
+      this.sortByFlagFirst = flagFirst;
       this.lastAction = await this.settings.getNumber(PREF_KEY.LAST_ACTION, -1);
       this.accounts = await this.repository.getAccounts();
+      this.accounts = this.sortAccounts(this.accounts);
       this.templates = await this.repository.getTemplates();
       this.tags = await this.repository.getTags();
       if (this.accounts.length > 0) {
@@ -302,7 +336,8 @@ struct Index {
   }
 
   private navigateToSearch(): void {
-    promptAction.showToast({ message: $r('app.string.toast_search_developing') });
+    router.pushUrl({ url: 'pages/SearchPage' }).catch(() => {
+    });
   }
 
   /**
@@ -379,6 +414,29 @@ struct Index {
     .shadow({ radius: 4, color: '#40000000', offsetY: 2 })
     .onClick(() => {
       this.createFromFab(type);
+    })
+  }
+
+  /** 账户页 FAB 展开菜单项（对齐安卓 FloatingActionButtonMenu 的 actions） */
+  @Builder
+  accountFabMenuItem(label: string, icon: Resource, onClick: () => void) {
+    Row({ space: 8 }) {
+      Image(icon)
+        .width(20)
+        .height(20)
+        .fillColor($r('app.color.textPrimary'))
+      Text(label)
+        .fontSize(14)
+        .fontColor($r('app.color.textPrimary'))
+    }
+    .height(48)
+    .padding({ left: 16, right: 16 })
+    .borderRadius(24)
+    .backgroundColor($r('app.color.cardBackgroundColor'))
+    .shadow({ radius: 4, color: '#40000000', offsetY: 2 })
+    .onClick(() => {
+      this.accountFabExpanded = false;
+      onClick();
     })
   }
 
@@ -488,12 +546,90 @@ struct Index {
   }
 
 
+  /**
+   * 账户页标题下拉菜单（对齐安卓 AccountsScreenTab：账户 / 资产负债表 同页切换）
+   */
+  private accountViewMenu(): Array<MenuElement> {
+    return [
+      {
+        value: '账户',
+        action: () => {
+          this.accountView = 0;
+        }
+      },
+      {
+        value: '资产负债表',
+        action: () => {
+          this.accountView = 1;
+        }
+      }
+    ];
+  }
+
+  /** 是否存在隐藏（sealed）账户（对齐安卓 accounts.any { !it.isVisible }） */
+  private hasHiddenAccounts(): boolean {
+    return this.accounts.some((a: Account) => a.sealed);
+  }
+
+  /** 是否存在零余额且计入总数的账户（对齐安卓 accounts.any { it.effectiveBalance == 0L }） */
+  private hasZeroAccounts(): boolean {
+    return this.accounts.some((a: Account) => a.currentBalance === 0 && !a.excludeFromTotals);
+  }
+
+  /**
+   * 资产负债表选项下拉菜单（对齐安卓 BalanceSheetOptions TooltipIconMenu）
+   * 菜单项：显示隐藏账户 / 显示零余额账户 / 显示图表（带勾选标记）
+   */
+  private balanceSheetOptionsMenu(): Array<MenuElement> {
+    const menu: Array<MenuElement> = [];
+    if (this.hasHiddenAccounts()) {
+      menu.push({
+        value: (this.bsShowHidden ? '✓ ' : '') + '显示隐藏账户',
+        action: () => {
+          this.bsShowHidden = !this.bsShowHidden;
+        }
+      } as MenuElement);
+    }
+    if (this.hasZeroAccounts()) {
+      menu.push({
+        value: (this.bsShowZero ? '✓ ' : '') + '显示零余额账户',
+        action: () => {
+          this.bsShowZero = !this.bsShowZero;
+        }
+      } as MenuElement);
+    }
+    menu.push({
+      value: (this.bsShowChart ? '✓ ' : '') + '显示图表',
+      action: () => {
+        this.bsShowChart = !this.bsShowChart;
+      }
+    } as MenuElement);
+    return menu;
+  }
+
   @Builder
   accountsTab() {
     Stack() {
       Column() {
         this.headerBar('账户')
-        if (this.accounts.length === 0) {
+        if (this.accountView === 1) {
+          // 资产负债表视图（对齐安卓 AccountsScreenTab.BALANCE_SHEET：同一页面内切换）
+          BalanceSheetView({
+            embedded: true,
+            printTick: $bsPrintTick,
+
+            showHidden: $bsShowHidden,
+            showZero: $bsShowZero,
+            showChart: $bsShowChart,
+            onNavigateAccount: (id: number) => {
+              this.selectedAccountId = id;
+              this.activeFilterType = -1;
+              this.selectedTab = 1;
+            }
+          })
+            .width('100%')
+            .layoutWeight(1)
+        } else if (this.accounts.length === 0) {
           this.emptyState()
         } else {
           AccountListPage({
@@ -547,6 +683,68 @@ struct Index {
       .width('100%')
       .height('100%')
 
+      // 账户页 FAB（对齐安卓 AccountsScreen FloatingActionButtonMenu：银行图标 + 竖线 + 上箭头）
+      if (this.accountView === 0) {
+        Stack({ alignContent: Alignment.BottomEnd }) {
+          // 展开菜单（对齐安卓 Popup：图标+文字，垂直排列，圆角胶囊）
+          if (this.accountFabExpanded) {
+            Column({ space: 8 }) {
+              this.accountFabMenuItem('新建账户', $r('app.media.ic_account_balance'), () => {
+                this.navigateToAccountEdit(-1);
+              })
+              this.accountFabMenuItem('新建资产组合', $r('app.media.ic_portfolio'), () => {
+                // 对齐安卓：组合账户为付费功能，未解锁时显示升级提示
+                promptAction.showToast({ message: '新建资产组合需升级（开发中）' });
+              })
+            }
+            .alignItems(HorizontalAlign.End)
+            .margin({ bottom: 64 })
+          }
+          // FAB 主体（对齐安卓 Material3 ExtendedFAB：surface 背景 + 高对比内容色）
+          Row({ space: 8 }) {
+            // 主按钮：点击直接新建账户；展开时图标旋转45°（对齐安卓）
+            Image(this.accountFabExpanded ? $r('app.media.ic_add') : $r('app.media.ic_account_balance'))
+              .width(22)
+              .height(22)
+              .fillColor($r('app.color.textPrimary'))
+              .rotate({ angle: this.accountFabExpanded ? 45 : 0 })
+              .onClick(() => {
+                if (this.accountFabExpanded) {
+                  this.accountFabExpanded = false;
+                } else {
+                  this.navigateToAccountEdit(-1);
+                }
+              })
+              .gesture(
+                LongPressGesture()
+                  .onAction(() => {
+                    this.accountFabExpanded = !this.accountFabExpanded;
+                  })
+              )
+            // 竖线 + 上箭头：点击展开菜单（对齐安卓 standard FAB）
+            Divider()
+              .vertical(true)
+              .color($r('app.color.textPrimary'))
+              .opacity(0.4)
+              .height(22)
+            Image($r('sys.media.ohos_ic_public_arrow_up'))
+              .width(20)
+              .height(20)
+              .fillColor($r('app.color.textPrimary'))
+              .onClick(() => {
+                this.accountFabExpanded = !this.accountFabExpanded;
+              })
+          }
+          .width(96)
+          .height(56)
+          .borderRadius(28)
+          .padding({ left: 16, right: 16 })
+          .backgroundColor($r('app.color.cardBackgroundColor'))
+          .shadow({ radius: 8, color: '#40000000', offsetY: 4 })
+        }
+        .markAnchor({ x: '100%', y: '100%' })
+        .position({ x: '95%', y: '98%' })
+      }
     }
     .width('100%')
     .height('100%')
@@ -613,30 +811,33 @@ struct Index {
           // 展开菜单（对齐安卓 Popup：图标+文字，垂直排列，圆角胶囊）
           // 菜单项与安卓 Action.STANDARD_ACTIONS 一致：支出/收入/转账/拆分/扫描
           if (this.fabExpanded) {
+            // 菜单项顺序对齐安卓 Action.STANDARD_ACTIONS.reversed()：
+            // 扫描/拆分/转账/收入/支出（支出在底部最靠近 FAB）
             Column({ space: 8 }) {
-              this.fabMenuItem('支出', $r('app.media.ic_expense'), -1)
-              this.fabMenuItem('收入', $r('app.media.ic_income'), 1)
-              this.fabMenuItem('转账', $r('app.media.ic_transfer'), 2)
-              this.fabMenuItem('拆分', $r('app.media.ic_split'), 3)
               this.fabMenuItem('扫描', $r('sys.media.ohos_ic_public_scan'), 4)
+              this.fabMenuItem('拆分', $r('app.media.ic_split'), 3)
+              this.fabMenuItem('转账', $r('app.media.ic_transfer'), 2)
+              this.fabMenuItem('收入', $r('app.media.ic_income'), 1)
+              this.fabMenuItem('支出', $r('app.media.ic_expense'), -1)
             }
             .alignItems(HorizontalAlign.End)
             .margin({ bottom: 64 })
           }
           // FAB 主体
           if (this.currentAccount()?.sealed === true) {
-            // 账户关闭：锁图标禁用（对齐安卓 sealed FAB）
+            // 账户关闭：圆形 FAB + 半透明锁图标（对齐安卓 sealed FloatingActionButton：
+            // containerColor=surfaceVariant, contentColor=onSurfaceVariant 38%, 无阴影）
             Row() {
               Image($r('app.media.ic_locked'))
-                .width(22)
-                .height(22)
-                .fillColor(Color.White)
+                .width(24)
+                .height(24)
+                .fillColor('#61000000')
             }
-            .width(96)
+            .width(56)
             .height(56)
             .borderRadius(28)
-            .backgroundColor('#9E9E9E')
-            .shadow({ radius: 8, color: '#40000000', offsetY: 4 })
+            .justifyContent(FlexAlign.Center)
+            .backgroundColor('#E0E0E0')
             .onClick(() => {
               promptAction.showToast({ message: $r('app.string.account_closed') });
             })
@@ -709,8 +910,20 @@ struct Index {
           .width('100%')
           .layoutWeight(1)
         } else {
-          List({ space: 0 }) {
-            ForEach(this.templates, (tpl: Template) => {
+          // 筛选后模板列表（无匹配时显示空提示）
+          if (this.filteredTemplates().length === 0) {
+            Column() {
+              Text('该筛选条件下暂无模板')
+                .fontSize(15)
+                .fontColor($r('app.color.textSecondary'))
+            }
+            .width('100%')
+            .layoutWeight(1)
+            .justifyContent(FlexAlign.Center)
+            .alignItems(HorizontalAlign.Center)
+          } else {
+            List({ space: 0 }) {
+              ForEach(this.filteredTemplates(), (tpl: Template) => {
               ListItem() {
                 Row() {
                   // 左侧：模板图标（对齐安卓 Plan ImageView）
@@ -770,6 +983,7 @@ struct Index {
           }
           .layoutWeight(1)
           .width('100%')
+          }
         }
       }
       .width('100%')
@@ -953,6 +1167,32 @@ struct Index {
     return recurrence >= 0 && recurrence < labels.length ? labels[recurrence] : '';
   }
 
+  /** 模板筛选菜单（对齐安卓模板与计划筛选：全部/不重复/每天/每周/每月/每年，就近展开） */
+  private templateFilterMenu(): Array<MenuElement> {
+    const values: number[] = [-1, 0, 2, 3, 4, 6];
+    const labels: string[] = ['全部模板', '不重复', '每天', '每周', '每月', '每年'];
+    const menu: Array<MenuElement> = [];
+    for (let i = 0; i < values.length; i++) {
+      const v = values[i];
+      const lb = labels[i];
+      menu.push({
+        value: (this.templateFilter === v ? '✓ ' : '') + lb,
+        action: () => {
+          this.templateFilter = v;
+        }
+      } as MenuElement);
+    }
+    return menu;
+  }
+
+  /** 按筛选条件过滤模板列表 */
+  private filteredTemplates(): Template[] {
+    if (this.templateFilter === -1) {
+      return this.templates;
+    }
+    return this.templates.filter((tpl: Template) => tpl.recurrence === this.templateFilter);
+  }
+
   /**
    * 生成计划交易（每月固定收支）
    */
@@ -1074,10 +1314,10 @@ struct Index {
   @Builder
   headerBar(title: string) {
     Row() {
-      // 账户标题 + 资产负债表切换箭头（对齐安卓）
+      // 账户标题 + 资产负债表切换箭头（对齐安卓：点击弹出下拉菜单，账户/资产负债表 同页切换）
       if (this.selectedTab === 0) {
         Row() {
-          Text(title)
+          Text(this.accountView === 0 ? '账户' : '资产负债表')
             .fontSize(18)
             .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.textPrimary'))
@@ -1085,10 +1325,8 @@ struct Index {
             .width(16)
             .height(16)
             .margin({ left: 4 })
-            .onClick(() => {
-              this.navigateToBalanceSheet();
-            })
         }
+        .bindMenu(this.accountViewMenu())
       } else {
         Text(title)
           .fontSize(18)
@@ -1096,39 +1334,46 @@ struct Index {
           .fontColor($r('app.color.textPrimary'))
       }
       Blank()
-      // 搜索图标（账户页对齐安卓）
-      if (this.selectedTab === 0) {
-        Image($r('sys.media.ohos_ic_public_search_filled'))
+      // 模板页右上角筛选（对齐安卓模板与计划筛选，就近展开非弹窗）
+      if (this.selectedTab === 2) {
+        Image($r('app.media.ic_filter_list'))
           .width(22)
           .height(22)
           .margin({ right: 8 })
-          .onClick(() => {
-            this.navigateToSearch();
-          })
+          .fillColor($r('app.color.textSecondary'))
+          .bindMenu(this.templateFilterMenu())
       }
-      // 账户页分组切换（对齐安卓 AccountGrouping：不分组/按类型/按货币/按标记）
-      if (this.selectedTab === 0) {
-        Button() {
-          Text(this.groupingLabel())
-            .fontSize(12)
-            .fontColor($r('app.color.primaryColor'))
-        }
-        .height(30)
-        .backgroundColor($r('app.color.primaryContainer'))
-        .borderRadius(4)
-        .margin({ right: 8 })
-        .onClick(() => {
-          this.cycleGrouping();
-        })
-      }
-      // 账户页选项图标（对齐安卓 accounts.xml 菜单，含新建账户/类型/标记等）
-      if (this.selectedTab === 0) {
-        Image($r('sys.media.ohos_ic_public_more'))
+      // 账户列表视图右上角操作（对齐安卓：ViewOptionsMenu Tune + ManageEntitiesMenu DataObject）
+      if (this.selectedTab === 0 && this.accountView === 0) {
+        // 选项（Tune）：分组 + 排序方式（对齐安卓 TooltipIconMenu 就近展开）
+        Image($r('app.media.ic_tune'))
           .width(22)
           .height(22)
+          .margin({ right: 16 })
+          .fillColor($r('app.color.textSecondary'))
+          .bindMenu(this.accountViewOptionsMenu())
+        // 数据（DataObject）：管理账户类型/标记
+        Image($r('app.media.ic_data_object'))
+          .width(22)
+          .height(22)
+          .fillColor($r('app.color.textSecondary'))
+          .bindMenu(this.manageEntitiesMenu())
+      }
+      // 资产负债表视图右上角操作（对齐安卓 BalanceSheetOptions：Print 图标 + Tune 下拉菜单，与标题同高）
+      if (this.selectedTab === 0 && this.accountView === 1) {
+        Image($r('app.media.ic_print'))
+          .width(22)
+          .height(22)
+          .margin({ right: 16 })
+          .fillColor($r('app.color.textSecondary'))
           .onClick(() => {
-            this.showAccountOptions();
+            this.bsPrintTick++;
           })
+        Image($r('app.media.ic_tune'))
+          .width(22)
+          .height(22)
+          .fillColor($r('app.color.textSecondary'))
+          .bindMenu(this.balanceSheetOptionsMenu())
       }
     }
     .width('100%')
@@ -1138,8 +1383,102 @@ struct Index {
   }
 
   /**
-   * 账户页选项菜单（对齐安卓 accounts.xml）
+   * 账户列表视图选项菜单（对齐安卓 ViewOptionsMenu：分组单选 + 排序方式入口）
    */
+  private accountViewOptionsMenu(): Array<MenuElement> {
+    const menu: Array<MenuElement> = [];
+    const groups: Array<AccountGrouping> = [AccountGrouping.NONE, AccountGrouping.TYPE, AccountGrouping.CURRENCY, AccountGrouping.FLAG];
+    const labels: Array<string> = ['不分组', '按类型', '按货币', '按标记'];
+    for (let i = 0; i < groups.length; i++) {
+      menu.push({
+        value: (this.grouping === groups[i] ? '✓ ' : '') + labels[i],
+        action: () => {
+          this.grouping = groups[i];
+          this.settings.setNumber(PREF_KEY.GROUPING, i);
+        }
+      } as MenuElement);
+    }
+    menu.push({
+      value: '排序方式',
+      action: () => {
+        this.showSortDialog();
+      }
+    } as MenuElement);
+    return menu;
+  }
+
+  /** 打开排序方式对话框（对齐安卓 AccountListDisplayConfigurationDialogFragment 居中模态框） */
+  private showSortDialog(): void {
+    const dialog = new CustomDialogController({
+      builder: SortDialog({
+        sortByFlagFirst: this.sortByFlagFirst,
+        currentSort: this.accountSortBy,
+        onResult: (flagFirst: boolean, sortBy: string) => {
+          this.sortByFlagFirst = flagFirst;
+          this.accountSortBy = sortBy;
+          this.applyAccountSort();
+        }
+      }),
+      autoCancel: true,
+      alignment: DialogAlignment.Center,
+      customStyle: true,
+      cornerRadius: 16
+    });
+    dialog.open();
+  }
+
+  /**
+   * 数据菜单（对齐安卓 ManageEntitiesMenu：管理账户类型/标记）
+   */
+  private manageEntitiesMenu(): Array<MenuElement> {
+    return [
+      {
+        value: '账户类型',
+        action: () => {
+          this.showAccountTypes();
+        }
+      } as MenuElement,
+      {
+        value: '账户标记',
+        action: () => {
+          this.showAccountFlagsManage();
+        }
+      } as MenuElement
+    ];
+  }
+
+
+  /** 应用账户排序 */
+  private applyAccountSort(): void {
+    this.settings.setString(PREF_KEY.SORT_BY, this.accountSortBy);
+    this.settings.setBoolean(PREF_KEY.SORT_ACCOUNT_LIST_BY_FLAG_FIRST, this.sortByFlagFirst);
+    // 按当前分组重新加载数据
+    this.loadData();
+  }
+
+  /** 按排序方式排序账户列表（对齐安卓 Sort.accountSort：LABEL/USAGES/LAST_USED/CUSTOM） */
+  private sortAccounts(accounts: Account[]): Account[] {
+    const sorted = [...accounts];
+    const flagFirst = this.sortByFlagFirst;
+    if (flagFirst) {
+      // 优先标记顺序：标记分组靠前
+      sorted.sort((a: Account, b: Account) => a.flagId - b.flagId);
+    }
+    switch (this.accountSortBy) {
+      case 'usages':
+        sorted.sort((a: Account, b: Account) => (b as Account).lastUsed - (a as Account).lastUsed);
+        break;
+      case 'last_used':
+        sorted.sort((a: Account, b: Account) => b.lastUsed - a.lastUsed);
+        break;
+      case 'custom':
+        break;
+      default:
+        sorted.sort((a: Account, b: Account) => a.label.localeCompare(b.label));
+    }
+    return sorted;
+  }
+
   private showAccountOptions(): void {
     const options: ActionSheetOptions = {
       title: '账户选项',
@@ -1168,7 +1507,9 @@ struct Index {
         },
         {
           title: '资产负债表',
-          action: () => this.navigateToBalanceSheet()
+          action: () => {
+            this.accountView = 1;
+          }
         }
       ]
     };
@@ -1216,6 +1557,9 @@ struct Index {
             .height(14)
             .opacity(0.4)
             .margin({ left: 4 })
+            .onClick(() => {
+              this.showAccountDetail();
+            })
         }
         Text(`当前余额 ${this.balanceText()}`)
           .fontSize(13)
@@ -1620,6 +1964,65 @@ struct Index {
       return sum;
     }
     return 0;
+  }
+
+  /**
+   * 账户详情弹窗（对齐安卓：点击交易页左上角账户标题倒三角）
+   */
+  private showAccountDetail(): void {
+    const acc = this.currentAccount();
+    const isAgg = this.isAggregate();
+    let label = isAgg ? '累计' : (acc?.label || '交易');
+    let curBalance = 0;
+    let opening = 0;
+    let income = 0;
+    let expense = 0;
+    let transfer = 0;
+    let symbol = '¥';
+    let digits = 2;
+    if (isAgg) {
+      for (const a of this.accounts) {
+        curBalance += a.currentBalance;
+        opening += a.openingBalance;
+        income += a.sumIncome;
+        expense += a.sumExpense;
+        transfer += a.sumTransfer;
+      }
+    } else if (acc) {
+      curBalance = acc.currentBalance;
+      opening = acc.openingBalance;
+      income = acc.sumIncome;
+      expense = acc.sumExpense;
+      transfer = acc.sumTransfer;
+      const cu = currencyByCode(acc.currency);
+      symbol = cu.symbol;
+      digits = cu.fractionDigits;
+    }
+    const dialog = new CustomDialogController({
+      builder: AccountDetailDialog({
+        accountLabel: label,
+        currentBalance: curBalance,
+        openingBalance: opening,
+        sumIncome: income,
+        sumExpense: expense,
+        sumTransfer: transfer,
+        isAggregate: isAgg,
+        currencySymbol: symbol,
+        fractionDigits: digits,
+        onCopy: () => {
+          const text = `${label} 当前余额 ${symbol}${formatMoney(curBalance, digits)}`;
+          const ctx = getContext(this) as common.UIAbilityContext;
+          const pasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text);
+          pasteboard.getSystemPasteboard().setData(pasteData);
+          promptAction.showToast({ message: '已复制到剪贴板' });
+        }
+      }),
+      autoCancel: true,
+      alignment: DialogAlignment.Bottom,
+      customStyle: true,
+      cornerRadius: 16
+    });
+    dialog.open();
   }
 
   private accountColor(): ResourceColor {

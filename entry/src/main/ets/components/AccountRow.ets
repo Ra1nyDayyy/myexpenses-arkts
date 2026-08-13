@@ -72,6 +72,7 @@ export struct AccountRow {
           Row() {
             Text(this.account.label)
               .fontSize(16)
+              .fontColor($r('app.color.textPrimary'))
               .fontWeight(FontWeight.Medium)
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })

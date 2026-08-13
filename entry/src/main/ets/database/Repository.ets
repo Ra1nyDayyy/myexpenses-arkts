@@ -7,6 +7,14 @@ import { PaymentMethod, Payee, Tag, Budget, Debt, Template } from '../model/Supp
 import { currencyByCode } from '../model/CurrencyUnit';
 import { generateUuid } from '../common/FormatUtils';
 
+/** 复杂搜索条件（对齐安卓 SearchRequest） */
+export interface SearchCriterion {
+  type: string;
+  op: string;
+  value: string;
+  extra?: string;
+}
+
 /**
  * 数据仓库：对应 Android db2/Repository* 系列
  * 单例，负责所有 CRUD 与汇总查询
@@ -282,6 +290,82 @@ export class Repository {
       await this.fillTransactionDisplay(t);
     }
     return list;
+  }
+
+  /**
+   * 复杂搜索交易（对齐安卓 SearchRequest：按条件过滤交易）
+   * criteria: type=amount/comment/status/date/account
+   */
+  async searchTransactions(criteria: Array<SearchCriterion>): Promise<Transaction[]> {
+    const predicates = new relationalStore.RdbPredicates('transactions');
+    const all = await this.store().query(predicates);
+    const list: Transaction[] = [];
+    try {
+      while (all.goToNextRow()) {
+        list.push(this.rowToTransaction(all));
+      }
+    } finally {
+      all.close();
+    }
+    for (let t of list) {
+      await this.fillTransactionDisplay(t);
+    }
+    // 应用搜索条件
+    return list.filter((t: Transaction) => {
+      for (const c of criteria) {
+        if (c.type === 'amount') {
+          const v = parseFloat(c.value) || 0;
+          const amt = t.amount / 100;
+          if (c.extra === '收入' && amt < 0) {
+            return false;
+          }
+          if (c.extra === '支出' && amt > 0) {
+            return false;
+          }
+          if (c.op === '大于' && Math.abs(amt) <= v) {
+            return false;
+          }
+          if (c.op === '小于' && Math.abs(amt) >= v) {
+            return false;
+          }
+          if (c.op === '等于' && Math.abs(Math.abs(amt) - v) > 0.005) {
+            return false;
+          }
+        } else if (c.type === 'comment') {
+          if (c.value.length > 0 && !(t.comment || '').includes(c.value)) {
+            return false;
+          }
+        } else if (c.type === 'status') {
+          // 状态：c.value=未结算/已结算，映射 cr_status
+          const statusVal = c.value === '已结算' ? 'RECONCILED' : c.value === '未结算' ? 'UNRECONCILED' : '';
+          if (statusVal.length > 0 && t.crStatus !== statusVal) {
+            return false;
+          }
+        } else if (c.type === 'date') {
+          // 日期范围（简化）：今天/本周/本月/今年
+          const now = new Date();
+          const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000;
+          let start = startOfDay;
+          if (c.value === '本周') {
+            const day = now.getDay() || 7;
+            start = startOfDay - (day - 1) * 86400;
+          } else if (c.value === '本月') {
+            start = new Date(now.getFullYear(), now.getMonth(), 1).getTime() / 1000;
+          } else if (c.value === '今年') {
+            start = new Date(now.getFullYear(), 0, 1).getTime() / 1000;
+          }
+          if (t.date < start) {
+            return false;
+          }
+        } else if (c.type === 'account') {
+          // 账户：通过 label 匹配（c.value 为账户名）
+          if (c.value.length > 0 && t.accountLabel !== c.value) {
+            return false;
+          }
+        }
+      }
+      return true;
+    });
   }
 
   async getTransaction(id: number): Promise<Transaction | null> {

@@ -1,105 +1,187 @@
 /**
- * 金额计算器对话框（对齐安卓金额计算器）
- * 支持数字键 + 四则运算 + 正负切换 + 百分号
+ * 金额计算器对话框（对齐安卓 CalculatorInput.kt）
+ * 栈式状态机：数字键 + 四则运算 + 正负切换 + 百分号 + 确定/取消
+ * 关键行为与安卓一致：
+ *  - 点"确定"时若存在未完成的运算，先自动计算再返回结果
+ *  - 百分比在加减运算中按"前一操作数 × 当前值 ÷ 100"处理并自动完成计算
  */
 @CustomDialog
 export struct CalculatorDialog {
   controller?: CustomDialogController;
   @State display: string = '0';
-  private operand1: number = 0;
-  private operator: string = '';
-  private waitingOperand: boolean = false;
+  @State opLabel: string = ''; // 当前运算符显示（对齐安卓 result_pane.op）
+  private stack: string[] = [];
+  private lastOp: string = ''; // '' | '+' | '−' | '×' | '÷'
+  private isRestart: boolean = true;
+  private isInEquals: boolean = false;
   onResult: (value: string) => void = () => {
   };
 
-  private appendDigit(d: string): void {
-    if (this.waitingOperand) {
-      this.display = d === '.' ? '0.' : d;
-      this.waitingOperand = false;
+  /**
+   * 数字格式化：对齐 BigDecimal.toPlainString，消除浮点误差并去除尾零
+   */
+  private fmt(n: number): string {
+    if (!isFinite(n)) {
+      return '0';
+    }
+    let s = (Math.round(n * 1000000) / 1000000).toString();
+    if (s.indexOf('e') >= 0 || s.indexOf('E') >= 0) {
+      s = n.toFixed(6);
+    }
+    if (s.indexOf('.') >= 0) {
+      s = s.replace(/0+$/, '').replace(/\.$/, '');
+    }
+    if (s === '-0' || s === '') {
+      s = '0';
+    }
+    return s;
+  }
+
+  private setDisplay(s: string): void {
+    if (s !== '') {
+      this.display = s.replace(',', '.');
+    }
+  }
+
+  private addChar(c: string): void {
+    let s = this.display;
+    if (c === '.' && s.indexOf('.') !== -1 && !this.isRestart) {
+      return;
+    }
+    if (this.isRestart) {
+      this.setDisplay(c === '.' ? '0.' : c);
+      this.isRestart = false;
     } else {
-      if (d === '.' && this.display.includes('.')) {
-        return;
-      }
-      if (this.display === '0' && d !== '.') {
-        this.display = d;
+      if (s === '0' && c !== '.') {
+        s = c;
       } else {
-        this.display = this.display.length >= 15 ? this.display : this.display + d;
+        s += c;
       }
+      this.setDisplay(s);
     }
   }
 
-  private setOperator(op: string): void {
-    const val = parseFloat(this.display);
-    if (this.operator !== '' && !this.waitingOperand) {
-      this.compute();
-    } else {
-      this.operand1 = val;
+  private doOpChar(op: string): void {
+    if (this.isInEquals) {
+      this.stack = [];
+      this.isInEquals = false;
     }
-    this.operator = op;
-    this.waitingOperand = true;
+    this.stack.push(this.display);
+    if (!this.isRestart) {
+      this.doLastOp();
+    }
+    this.lastOp = op;
+    this.opLabel = op;
   }
 
-  private compute(): void {
-    const val2 = parseFloat(this.display);
-    let result = 0;
-    switch (this.operator) {
+  private doLastOp(): void {
+    this.isRestart = true;
+    if (this.lastOp === '' || this.stack.length === 1) {
+      return;
+    }
+    const valTwo = this.stack.pop() as string;
+    const valOne = this.stack.pop() as string;
+    const a = parseFloat(valOne);
+    const b = parseFloat(valTwo);
+    let r = 0;
+    switch (this.lastOp) {
       case '+':
-        result = this.operand1 + val2;
+        r = a + b;
         break;
-      case '-':
-        result = this.operand1 - val2;
+      case '−':
+        r = a - b;
         break;
       case '×':
-        result = this.operand1 * val2;
+        r = a * b;
         break;
       case '÷':
-        result = val2 !== 0 ? this.operand1 / val2 : 0;
+        r = b === 0 ? 0 : a / b;
         break;
       default:
-        result = val2;
+        break;
     }
-    this.operand1 = result;
-    this.display = String(Math.round(result * 10000) / 10000);
-    this.operator = '';
-    this.waitingOperand = true;
-  }
-
-  private equals(): void {
-    if (this.operator !== '') {
-      this.compute();
+    const res = this.fmt(r);
+    this.stack.push(res);
+    this.setDisplay(res);
+    if (this.isInEquals) {
+      this.stack.push(valTwo);
     }
   }
 
-  private clear(): void {
-    this.display = '0';
-    this.operand1 = 0;
-    this.operator = '';
-    this.waitingOperand = false;
+  private doEqualsChar(): void {
+    if (this.lastOp === '' || this.isRestart) {
+      return;
+    }
+    if (!this.isInEquals) {
+      this.isInEquals = true;
+      this.stack.push(this.display);
+    }
+    this.doLastOp();
+    this.opLabel = '';
+  }
+
+  private doPercentChar(): void {
+    const cur = parseFloat(this.display);
+    let val = cur;
+    if ((this.lastOp === '+' || this.lastOp === '−') && this.stack.length > 0) {
+      // 加减：百分比是"前一操作数的百分比"
+      val = cur * parseFloat(this.stack[this.stack.length - 1]);
+    }
+    this.setDisplay(this.fmt(val / 100));
+    this.doEqualsChar();
+  }
+
+  private doBackspace(): void {
+    const s = this.display;
+    if (s === '0' || this.isRestart) {
+      return;
+    }
+    let newDisplay = s.length > 1 ? s.substring(0, s.length - 1) : '0';
+    if (newDisplay === '-') {
+      newDisplay = '0';
+    }
+    this.setDisplay(newDisplay);
+  }
+
+  private resetAll(): void {
+    this.setDisplay('0');
+    this.opLabel = '';
+    this.lastOp = '';
+    this.isRestart = true;
+    this.stack = [];
+    this.isInEquals = false;
   }
 
   private toggleSign(): void {
-    const val = parseFloat(this.display);
-    this.display = String(val > 0 ? -val : Math.abs(val));
-  }
-
-  private percent(): void {
-    const val = parseFloat(this.display);
-    this.display = String(val / 100);
+    const v = parseFloat(this.display);
+    this.setDisplay(this.fmt(-v));
   }
 
   private confirm(): void {
+    if (!this.isInEquals) {
+      this.doEqualsChar();
+    }
     this.onResult(this.display);
     this.controller?.close();
   }
 
+  private cancel(): void {
+    this.controller?.close();
+  }
+
   @Builder
-  calcKey(text: string, onClick: () => void) {
+  calcKey(text: string, onClick: () => void, textColor: ResourceColor = $r('app.color.textPrimary'),
+    bold: boolean = false) {
     Button(text)
-      .width('100%')
-      .height(56)
-      .fontSize(20)
-      .fontColor($r('app.color.textPrimary'))
+      .layoutWeight(1)
+      .height(46)
+      .fontSize(18)
+      .fontWeight(bold ? FontWeight.Bold : FontWeight.Normal)
+      .fontColor(textColor)
       .backgroundColor($r('app.color.cardBackgroundColor'))
+      .border({ width: 1, color: $r('app.color.dividerColor') })
+      .borderRadius(8)
+      .margin({ left: 3, right: 3, top: 3, bottom: 3 })
       .onClick(() => {
         onClick();
       })
@@ -107,67 +189,69 @@ export struct CalculatorDialog {
 
   build() {
     Column() {
-      // 显示区
-      Text(this.display)
-        .fontSize(36)
-        .fontWeight(FontWeight.Bold)
-        .fontColor($r('app.color.textPrimary'))
-        .width('100%')
-        .height(72)
-        .textAlign(TextAlign.End)
-        .padding({ right: 16 })
-        .backgroundColor($r('app.color.pageBackground'))
-
-      // 键盘
+      // 结果面板（对齐安卓 calculator_result.xml：op 右上 + result 下方右对齐）
       Column() {
-        Row() {
-          this.calcKey('C', () => this.clear())
-          this.calcKey('⌫', () => {
-            this.display = this.display.length > 1 ? this.display.slice(0, -1) : '0';
-          })
-          this.calcKey('%', () => this.percent())
-          this.calcKey('÷', () => this.setOperator('÷'))
-        }
-        Row() {
-          this.calcKey('7', () => this.appendDigit('7'))
-          this.calcKey('8', () => this.appendDigit('8'))
-          this.calcKey('9', () => this.appendDigit('9'))
-          this.calcKey('×', () => this.setOperator('×'))
-        }
-        Row() {
-          this.calcKey('4', () => this.appendDigit('4'))
-          this.calcKey('5', () => this.appendDigit('5'))
-          this.calcKey('6', () => this.appendDigit('6'))
-          this.calcKey('-', () => this.setOperator('-'))
-        }
-        Row() {
-          this.calcKey('1', () => this.appendDigit('1'))
-          this.calcKey('2', () => this.appendDigit('2'))
-          this.calcKey('3', () => this.appendDigit('3'))
-          this.calcKey('+', () => this.setOperator('+'))
-        }
-        Row() {
-          this.calcKey('±', () => this.toggleSign())
-          this.calcKey('0', () => this.appendDigit('0'))
-          this.calcKey('.', () => this.appendDigit('.'))
-          Button('=')
-            .width('100%')
-            .height(56)
-            .fontSize(20)
-            .fontColor(Color.White)
-            .backgroundColor($r('app.color.primaryColor'))
-            .onClick(() => this.equals())
-        }
+        Text(this.opLabel)
+          .fontSize(20)
+          .fontColor(Color.Black)
+          .width('100%')
+          .textAlign(TextAlign.End)
+          .height(26)
+          .margin({ bottom: -4 })
+        Text(this.display)
+          .fontSize(36)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(Color.Black)
+          .width('100%')
+          .textAlign(TextAlign.End)
+          .maxLines(1)
+          .height(44)
       }
-      .padding(8)
+      .width('100%')
+      .backgroundColor($r('app.color.cardBackgroundColor'))
+      .border({ width: 1, color: $r('app.color.dividerColor') })
+      .borderRadius(8)
+      .padding({ left: 15, right: 15, top: 6, bottom: 6 })
 
-      // 确定
-      Button('确定')
-        .width('100%')
-        .height(48)
-        .margin({ top: 8, bottom: 16 })
-        .backgroundColor($r('app.color.primaryColor'))
-        .onClick(() => this.confirm())
+      // 键盘（对齐安卓 calculator.xml 6 列布局）
+      Row() {
+        this.calcKey('7', () => this.addChar('7'))
+        this.calcKey('8', () => this.addChar('8'))
+        this.calcKey('9', () => this.addChar('9'))
+        this.calcKey('0', () => this.addChar('0'))
+        this.calcKey('+', () => this.doOpChar('+'))
+        this.calcKey('C', () => this.resetAll(), '#f26522', true)
+      }
+      .width('100%')
+
+      Row() {
+        this.calcKey('4', () => this.addChar('4'))
+        this.calcKey('5', () => this.addChar('5'))
+        this.calcKey('6', () => this.addChar('6'))
+        this.calcKey('±', () => this.toggleSign())
+        this.calcKey('−', () => this.doOpChar('−'))
+        this.calcKey('⌫', () => this.doBackspace())
+      }
+      .width('100%')
+
+      Row() {
+        this.calcKey('1', () => this.addChar('1'))
+        this.calcKey('2', () => this.addChar('2'))
+        this.calcKey('3', () => this.addChar('3'))
+        this.calcKey('.', () => this.addChar('.'))
+        this.calcKey('×', () => this.doOpChar('×'))
+        this.calcKey('%', () => this.doPercentChar())
+      }
+      .width('100%')
+
+      Row() {
+        this.calcKey('取消', () => this.cancel())
+        this.calcKey('确定', () => this.confirm())
+        this.calcKey('÷', () => this.doOpChar('÷'))
+        this.calcKey('=', () => this.doEqualsChar(), '#39b54a', true)
+      }
+      .width('100%')
+      .margin({ bottom: 8 })
     }
     .width('100%')
   }

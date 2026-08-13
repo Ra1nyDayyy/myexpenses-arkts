@@ -1,7 +1,8 @@
 import { Transaction } from '../model/Transaction';
 import { Repository } from '../database/Repository';
 import { PageHeader } from '../components/PageHeader';
-import { router } from '@kit.ArkUI';
+import { VoiceInputDialog } from '../components/VoiceInputDialog';
+import { router, promptAction } from '@kit.ArkUI';
 import { formatMoney } from '../model/Money';
 import { currencyByCode } from '../model/CurrencyUnit';
 
@@ -148,16 +149,39 @@ struct AiAssistant {
     return `${prefix}${this.symbol}${formatMoney(amount, this.fractionDigits)}`;
   }
 
+  /** AI 语音输入（对齐用户需求：通过语音输入获得结果） */
+  private startVoiceInput(): void {
+    const dialog = new CustomDialogController({
+      builder: VoiceInputDialog({
+        onResult: (text: string) => {
+          if (text.length > 0) {
+            promptAction.showToast({ message: `已识别：${text}` });
+            // 语音内容可用于后续分析（本期记录）
+          }
+        }
+      }),
+      autoCancel: true,
+      alignment: DialogAlignment.Bottom,
+      customStyle: true,
+      cornerRadius: 16
+    });
+    dialog.open();
+  }
+
   build() {
     Column() {
       PageHeader({
         title: 'AI 助手',
         rightText: '重新分析',
+        showSpeech: true,
         onBack: () => {
           router.back();
         },
         onRight: () => {
           this.analyze();
+        },
+        onSpeech: () => {
+          this.startVoiceInput();
         }
       })
 

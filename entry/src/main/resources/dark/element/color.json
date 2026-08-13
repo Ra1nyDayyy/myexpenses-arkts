@@ -121,6 +121,10 @@
       "value": "#B0B0B0"
     },
     {
+      "name": "chipBackground",
+      "value": "#3A3A3C"
+    },
+    {
       "name": "dividerColor",
       "value": "#3A3A3C"
     },

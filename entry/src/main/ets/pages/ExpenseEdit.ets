@@ -25,6 +25,12 @@ struct ExpenseEdit {
   @State isTemplate: boolean = false; // 模板编辑模式（新建/编辑交易模板）
   @State templateId: number = -1; // >0 编辑已有模板
   @State templateTitle: string = ''; // 模板标题
+  /** 类型 Tabs 当前索引（0支出/1收入/2转账/3拆分），标题下拉切换时同步 */
+  @State typeIndex: number = 0;
+  /** 模板默认操作（对齐安卓 Template.Action：0=保存 SAVE，1=编辑 EDIT） */
+  @State templateDefaultAction: number = 0;
+  /** 模板计划（对齐安卓 Recurrence：0=无，2=每天，3=每周，4=每月，6=每年） */
+  @State templateRecurrence: number = 0;
   @State accountId: number = -1;
   @State operationType: OperationType = OperationType.TRANSACTION;
   @State isIncome: boolean = false;
@@ -59,7 +65,7 @@ struct ExpenseEdit {
       }
     }),
     autoCancel: true,
-    alignment: DialogAlignment.Bottom,
+    alignment: DialogAlignment.Center,
     customStyle: true,
     cornerRadius: 16
   });
@@ -73,7 +79,7 @@ struct ExpenseEdit {
         }
       }),
       autoCancel: true,
-      alignment: DialogAlignment.Bottom,
+      alignment: DialogAlignment.Center,
       customStyle: true,
       cornerRadius: 16
     });
@@ -175,6 +181,7 @@ struct ExpenseEdit {
       this.transferAccountId = tpl.transferAccountId;
       this.tagIds = tpl.tagIds;
       this.isIncome = tpl.isIncome;
+      this.templateRecurrence = tpl.recurrence;
       this.amountInput = formatMoney(Math.abs(tpl.amount), this.fractionDigits());
       hilog.info(0x0000, 'ExpenseEdit', 'loadTemplate: tplAmount=%{public}d currency=%{public}s fractionDigits=%{public}d amountInput=%{public}s',
         tpl.amount, this.currencyCode, this.fractionDigits(), this.amountInput);
@@ -428,6 +435,7 @@ struct ExpenseEdit {
     tpl.isIncome = this.isIncome;
     tpl.tagIds = this.tagIds;
     tpl.currency = this.currencyCode;
+    tpl.recurrence = this.templateRecurrence;
     tpl.amount = this.isIncome ? Math.abs(parseMoney(this.amountInput, this.fractionDigits())) : -Math.abs(parseMoney(this.amountInput, this.fractionDigits()));
     try {
       if (tpl.id > 0) {
@@ -567,6 +575,25 @@ struct ExpenseEdit {
   }
 
   /**
+   * 跳转标签选择页面（对齐安卓 tags_create_or_select：创建或选择标签）
+   */
+  private navigateToTagSelection(): void {
+    router.pushUrl({
+      url: 'pages/TagSelect',
+      params: {
+        selectedTagIds: this.tagIds
+      }
+    }).then(() => {
+      // 通过 AppStorage 监听返回结果
+      const result = AppStorage.get<number[]>('selectedTags');
+      if (result) {
+        this.tagIds = result;
+        AppStorage.delete('selectedTags');
+      }
+    });
+  }
+
+  /**
    * 标签 id → 标签名
    */
   private tagLabel(tagId: number): string {
@@ -585,7 +612,7 @@ struct ExpenseEdit {
         }
       }),
       autoCancel: true,
-      alignment: DialogAlignment.Bottom,
+      alignment: DialogAlignment.Center,
       customStyle: true,
       cornerRadius: 16
     });
@@ -744,18 +771,16 @@ struct ExpenseEdit {
   }
 
   build() {
+    Stack() {
     Column() {
       PageHeader({
         title: this.isTemplate
-          ? (this.templateId > 0 ? '编辑模板' : '新建模板')
+          ? (this.templateId > 0 ? this.getTemplateEditTitle() : this.getTemplateCreateTitle())
           : (this.transactionId > 0 ? '编辑交易' : '新建交易'),
-        rightText: '保存',
         showMore: true,
+        titleMenu: this.isTemplate ? this.templateTypeMenu() : [],
         onBack: () => {
           router.back();
-        },
-        onRight: () => {
-          this.save();
         },
         onMore: () => {
           this.showEditOptions();
@@ -764,8 +789,8 @@ struct ExpenseEdit {
 
       Scroll() {
         Column() {
-          // 类型切换（鸿蒙原生 Tabs 分段控件，仅用 TabBar，内容区不占空间）
-          Tabs({ barPosition: BarPosition.Start }) {
+          // 类型切换（鸿蒙原生 Tabs 分段控件；模板模式隐藏——模板类型由左上角标题下拉选择）
+          Tabs({ barPosition: BarPosition.Start, index: this.typeIndex }) {
             TabContent() {
               Column()
                 .width('100%')
@@ -790,12 +815,14 @@ struct ExpenseEdit {
                 .height(0)
             }.tabBar(this.tabTypeBuilder(3, '拆分'))
           }
+          .visibility(this.isTemplate ? Visibility.None : Visibility.Visible)
           .width('100%')
           .height(44)
           .barHeight(44)
           .scrollable(false)
           .animationDuration(150)
           .onChange((index: number) => {
+            this.typeIndex = index;
             if (index === 0) {
               this.isIncome = false;
               this.operationType = OperationType.TRANSACTION;
@@ -884,7 +911,7 @@ struct ExpenseEdit {
                 this.originalAmountInput = v;
               })
           }
-          .visibility((this.showOriginalAmount && !this.isTemplate) ? Visibility.Visible : Visibility.Hidden)
+          .visibility((this.showOriginalAmount && !this.isTemplate) ? Visibility.Visible : Visibility.None)
           .width('100%')
           .height(48)
           .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
@@ -895,10 +922,22 @@ struct ExpenseEdit {
               .fontSize(14)
               .fontColor($r('app.color.textPrimary'))
               .width('30%')
+            // 收入/支出类型开关（对齐安卓 type_switch：支出态粉 #F75986，收入态绿）
+            Toggle({ type: ToggleType.Switch, isOn: this.isIncome })
+              .selectedColor(this.isIncome ? $r('app.color.colorIncome') : '#F75986')
+              .switchPointColor(Color.White)
+              .onChange((isOn: boolean) => {
+                this.isIncome = isOn;
+              })
+            Text(this.isIncome ? '+' : '−')
+              .fontSize(14)
+              .fontWeight(FontWeight.Bold)
+              .fontColor(this.isIncome ? $r('app.color.colorIncome') : $r('app.color.colorExpense'))
+              .margin({ left: 4 })
             Text(this.currencySymbol())
               .fontSize(16)
               .fontColor($r('app.color.textSecondary'))
-              .margin({ right: 6 })
+              .margin({ left: 6, right: 6 })
             TextInput({ placeholder: '0.00', text: this.amountInput })
               .type(InputType.NUMBER_DECIMAL)
               .layoutWeight(1)
@@ -908,9 +947,9 @@ struct ExpenseEdit {
               })
             // 计算器按钮（对齐安卓金额计算器）
             Image($r('app.media.ic_calculator'))
-              .width(20)
-              .height(20)
-              .margin({ left: 8 })
+              .width(16)
+              .height(16)
+              .margin({ left: 6 })
               .fillColor($r('app.color.textSecondary'))
               .onClick(() => {
                 this.showCalculator();
@@ -1000,43 +1039,47 @@ struct ExpenseEdit {
             .width('100%')
           }
 
-          // 收款人
-          Row() {
-            Text('收款人')
-              .fontSize(14)
-              .fontColor($r('app.color.textPrimary'))
-              .width('30%')
-            TextInput({ placeholder: '收款人', text: this.payeeInput })
-              .layoutWeight(1)
-              .onChange((v: string) => {
-                this.payeeInput = v;
-              })
+          // 收款人/付款人（转账模板隐藏；对齐安卓 PayeeLabel：收入显示"付款人"，支出显示"收款人"）
+          if (this.operationType !== OperationType.TRANSFER) {
+            Row() {
+              Text(this.isIncome ? '付款人' : '收款人')
+                .fontSize(14)
+                .fontColor($r('app.color.textPrimary'))
+                .width('30%')
+              TextInput({ placeholder: this.isIncome ? '付款人' : '收款人', text: this.payeeInput })
+                .layoutWeight(1)
+                .onChange((v: string) => {
+                  this.payeeInput = v;
+                })
+            }
+            .width('100%')
+            .height(48)
+            .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
           }
-          .width('100%')
-          .height(48)
-          .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
 
-          // 类别
-          Row() {
-            Text('类别')
-              .fontSize(14)
-              .fontColor($r('app.color.textPrimary'))
-              .width('30%')
-            Text(this.selectedCategoryLabel || '选择')
-              .fontSize(16)
-              .fontColor(this.selectedCategoryId >= 0 ? $r('app.color.textPrimary') : $r('app.color.textSecondary'))
-              .layoutWeight(1)
-            Image($r('sys.media.ohos_ic_public_arrow_right'))
-              .width(16)
-              .height(16)
-              .opacity(0.4)
+          // 类别（拆分父项/转账模板隐藏，对齐安卓：拆分固定拆分类别、转账默认隐藏类别）
+          if (this.operationType !== OperationType.SPLIT && this.operationType !== OperationType.TRANSFER) {
+            Row() {
+              Text('类别')
+                .fontSize(14)
+                .fontColor($r('app.color.textPrimary'))
+                .width('30%')
+              Text(this.selectedCategoryLabel || '选择')
+                .fontSize(16)
+                .fontColor(this.selectedCategoryId >= 0 ? $r('app.color.textPrimary') : $r('app.color.textSecondary'))
+                .layoutWeight(1)
+              Image($r('sys.media.ohos_ic_public_arrow_right'))
+                .width(16)
+                .height(16)
+                .opacity(0.4)
+            }
+            .width('100%')
+            .height(48)
+            .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
+            .onClick(() => {
+              this.navigateCategorySelect();
+            })
           }
-          .width('100%')
-          .height(48)
-          .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
-          .onClick(() => {
-            this.navigateCategorySelect();
-          })
 
           // 日期（点击弹出鸿蒙原生日期选择器；模板模式隐藏）
           Row() {
@@ -1053,7 +1096,7 @@ struct ExpenseEdit {
               .height(16)
               .opacity(0.4)
           }
-          .visibility(this.isTemplate ? Visibility.Hidden : Visibility.Visible)
+          .visibility(this.isTemplate ? Visibility.None : Visibility.Visible)
           .width('100%')
           .height(48)
           .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
@@ -1076,7 +1119,7 @@ struct ExpenseEdit {
               .height(16)
               .opacity(0.4)
           }
-          .visibility(this.isTemplate ? Visibility.Hidden : Visibility.Visible)
+          .visibility(this.isTemplate ? Visibility.None : Visibility.Visible)
           .width('100%')
           .height(48)
           .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
@@ -1122,7 +1165,7 @@ struct ExpenseEdit {
             .alignItems(VerticalAlign.Top)
           }
 
-          // 付款方法（拆分模式下隐藏，对齐 Android 拆分页无收款方法）
+          // 付款方法（转账隐藏；模板模式下仅拆分模板显示，对齐安卓：交易/转账模板无付款方法）
           Row() {
             Text('付款方法')
               .fontSize(14)
@@ -1137,7 +1180,8 @@ struct ExpenseEdit {
                 this.methodId = this.methods[index].id;
               })
           }
-          .visibility(this.operationType === OperationType.SPLIT ? Visibility.Hidden : Visibility.Visible)
+          .visibility((this.operationType === OperationType.TRANSFER ||
+            (this.isTemplate && this.operationType !== OperationType.SPLIT)) ? Visibility.None : Visibility.Visible)
           .width('100%')
           .height(48)
           .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
@@ -1158,6 +1202,40 @@ struct ExpenseEdit {
           .height(48)
           .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
 
+          // 标签行（对齐安卓 tag_row：左侧标签、中间ChipGroup、右侧加号）
+          Row() {
+            Text('标签')
+              .fontSize(14)
+              .fontColor($r('app.color.textPrimary'))
+              .width('30%')
+            
+            // 已选标签（对齐安卓 ChipGroup）
+            if (this.tagIds.length === 0) {
+              Text('选择标签')
+                .fontSize(16)
+                .fontColor($r('app.color.textSecondary'))
+                .layoutWeight(1)
+            } else {
+              Flex({ wrap: FlexWrap.Wrap }) {
+                ForEach(this.tagIds, (tagId: number) => {
+                  this.tagChip(tagId)
+                })
+              }
+              .layoutWeight(1)
+            }
+
+            // 加号按钮（对齐安卓 TagSelection：跳转到"创建或选择标签"）
+            Image($r('sys.media.ohos_ic_public_add'))
+              .width(24)
+              .height(24)
+              .fillColor($r('app.color.primaryColor'))
+              .onClick(() => {
+                this.navigateToTagSelection();
+              })
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, top: 8, bottom: 8 })
+          .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
 
           // 附件（对齐安卓 attach；模板模式隐藏）
           Row() {
@@ -1205,10 +1283,46 @@ struct ExpenseEdit {
                 this.pickAttachment();
               })
           }
-          .visibility(this.isTemplate ? Visibility.Hidden : Visibility.Visible)
+          .visibility(this.isTemplate ? Visibility.None : Visibility.Visible)
           .width('100%')
           .height(48)
           .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
+
+          // 模板默认操作（对齐安卓 DefaultActionRow：保存/编辑；仅模板模式显示）
+          if (this.isTemplate) {
+            Row() {
+              Text('默认操作')
+                .fontSize(14)
+                .fontColor($r('app.color.textPrimary'))
+                .width('30%')
+              Select(this.defaultActionOptions())
+                .selected(this.templateDefaultAction)
+                .onSelect((index: number) => {
+                  this.templateDefaultAction = index;
+                })
+            }
+            .width('100%')
+            .height(48)
+            .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
+          }
+
+          // 模板计划（对齐安卓 PlanRow：无/一次性/每天/每周/每月/每年；仅模板模式显示）
+          if (this.isTemplate) {
+            Row() {
+              Text('计划')
+                .fontSize(14)
+                .fontColor($r('app.color.textPrimary'))
+                .width('30%')
+              Select(this.templateRecurrenceOptions())
+                .selected(this.templateRecurrence)
+                .onSelect((index: number) => {
+                  this.templateRecurrence = this.templateRecurrenceValues()[index];
+                })
+            }
+            .width('100%')
+            .height(48)
+            .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
+          }
 
           // 保存并新建（对齐安卓 Save and new；模板模式隐藏）
           if (!this.isTemplate) {
@@ -1228,10 +1342,132 @@ struct ExpenseEdit {
         .padding({ left: 16, right: 16, top: 4 })
       }
       .layoutWeight(1)
+      // 内容从页面顶部开始（对齐安卓 NestedScrollView 表单贴工具栏下方）
+      // Scroll 默认 align 为 Center，内容高度小于视口时会被垂直居中，需显式顶部对齐
+      .align(Alignment.Top)
     }
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.pageBackground'))
+
+    // 右下角保存 FAB（对齐安卓：大圆角方形 ~52dp，背景 #445274，勾号 #DAE3FF）
+    Stack({ alignContent: Alignment.Center }) {
+      Image($r('app.media.ic_check'))
+        .width(26)
+        .height(26)
+        .fillColor('#DAE3FF')
+    }
+    .width(52)
+    .height(52)
+    .borderRadius(16)
+    .backgroundColor('#445274')
+    .shadow({ radius: 10, color: '#33000000', offsetY: 3 })
+    .markAnchor({ x: '100%', y: '100%' })
+    .position({ x: '94%', y: '95%' })
+    .onClick(() => {
+      this.save();
+    })
+    }
+  }
+
+  /**
+   * 标签Chip（对齐安卓 Chip）
+   */
+  @Builder
+  tagChip(tagId: number) {
+    Row() {
+      Text(this.getTagLabel(tagId))
+        .fontSize(13)
+        .fontColor($r('app.color.textPrimary'))
+        .padding({ left: 10, right: 10 })
+    }
+    .height(28)
+    .borderRadius(14)
+    .backgroundColor($r('app.color.chipBackground'))
+    .margin({ right: 6, bottom: 4 })
+  }
+
+  /**
+   * 获取标签名称
+   */
+  private getTagLabel(tagId: number): string {
+    const tag = this.tags.find(t => t.id === tagId);
+    return tag ? tag.label : '';
+  }
+
+  /** 获取新建模板标题（根据operationType动态变化） */
+  private getTemplateCreateTitle(): string {
+    if (this.operationType === OperationType.TRANSFER) {
+      return '新建转账模板';
+    } else if (this.operationType === OperationType.SPLIT) {
+      return '新建分账模板';
+    } else {
+      return '新建交易模板';
+    }
+  }
+
+  /** 获取编辑模板标题（根据operationType动态变化） */
+  private getTemplateEditTitle(): string {
+    if (this.operationType === OperationType.TRANSFER) {
+      return '编辑转账模板';
+    } else if (this.operationType === OperationType.SPLIT) {
+      return '编辑分账模板';
+    } else {
+      return '编辑交易模板';
+    }
+  }
+
+  /** 模板类型切换菜单（对齐安卓：交易模板/转账模板/拆分模板，左上角标题下拉就近展开） */
+  private templateTypeMenu(): Array<MenuElement> {
+    return [
+      {
+        value: (this.operationType !== OperationType.TRANSFER && this.operationType !== OperationType.SPLIT ? '✓ ' : '') + '交易模板',
+        action: () => {
+          this.typeIndex = this.isIncome ? 1 : 0;
+          this.operationType = OperationType.TRANSACTION;
+        }
+      } as MenuElement,
+      {
+        value: (this.operationType === OperationType.TRANSFER ? '✓ ' : '') + '转账模板',
+        action: () => {
+          this.typeIndex = 2;
+          this.operationType = OperationType.TRANSFER;
+        }
+      } as MenuElement,
+      {
+        value: (this.operationType === OperationType.SPLIT ? '✓ ' : '') + '拆分模板',
+        action: () => {
+          this.typeIndex = 3;
+          this.operationType = OperationType.SPLIT;
+        }
+      } as MenuElement
+    ];
+  }
+
+  /** 模板默认操作选项（对齐安卓 Template.Action：保存/编辑） */
+  private defaultActionOptions(): SelectOption[] {
+    return [
+      { value: '保存' } as SelectOption,
+      { value: '编辑' } as SelectOption
+    ];
+  }
+
+  /** 模板计划选项（对齐安卓 Recurrence） */
+  private templateRecurrenceOptions(): SelectOption[] {
+    return [
+      { value: '无计划' } as SelectOption,
+      { value: '一次性活动' } as SelectOption,
+      { value: '每天' } as SelectOption,
+      { value: '每周' } as SelectOption,
+      { value: '每月' } as SelectOption,
+      { value: '每年' } as SelectOption,
+      { value: '自定义' } as SelectOption
+    ];
+  }
+
+  /** 计划选项对应枚举值（对齐安卓 Recurrence：NONE/ONETIME/DAILY/WEEKLY/MONTHLY/YEARLY/CUSTOM） */
+  private templateRecurrenceValues(): number[] {
+    return [0, 1, 2, 3, 4, 6, 7];
   }
 
   @Builder

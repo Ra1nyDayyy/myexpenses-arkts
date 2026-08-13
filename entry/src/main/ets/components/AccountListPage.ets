@@ -108,22 +108,6 @@ export struct AccountListPage {
 
   build() {
     Column() {
-      // 标题栏
-      Row() {
-        Text('管理账户')
-          .fontSize(15)
-          .fontWeight(FontWeight.Bold)
-        Blank()
-        Image($r('sys.media.ohos_ic_public_add'))
-          .width(20)
-          .height(20)
-          .onClick(() => {
-            this.onCreateAccount();
-          })
-      }
-      .width('100%')
-      .height(48)
-      .padding({ left: 16, right: 16 })
 
       if (this.accounts.length === 0) {
         EmptyState({

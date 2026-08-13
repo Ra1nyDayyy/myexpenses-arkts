@@ -36,7 +36,11 @@ export struct TransactionRow {
     if (this.transaction.isSplit()) {
       return '拆分交易';
     }
-    return this.transaction.categoryPath || '未分类';
+    // 对齐安卓 buildPrimaryInfo：无分类时显示备注/收款人，避免"未分类"占位
+    if (this.transaction.categoryPath && this.transaction.categoryPath.length > 0) {
+      return this.transaction.categoryPath;
+    }
+    return this.transaction.comment || this.transaction.payeeName || '';
   }
 
   private secondaryText(): string {
@@ -44,10 +48,8 @@ export struct TransactionRow {
     if (this.transaction.methodLabel) {
       parts.push(this.transaction.methodLabel);
     }
-    if (this.transaction.comment) {
-      parts.push(this.transaction.comment);
-    }
-    if (this.transaction.payeeName) {
+    // 主标题已含分类或备注，副标题补充收款人（避免重复）
+    if (this.transaction.payeeName && this.transaction.payeeName !== this.primaryText()) {
       parts.push(this.transaction.payeeName);
     }
     return parts.join(' · ');
@@ -139,12 +141,14 @@ export struct TransactionRow {
             .textOverflow({ overflow: TextOverflow.Ellipsis })
             .width('100%')
         }
-        Text(this.primaryText())
-          .fontSize(15)
-          .fontWeight(FontWeight.Medium)
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-          .width('100%')
+        if (this.primaryText().length > 0) {
+          Text(this.primaryText())
+            .fontSize(15)
+            .fontWeight(FontWeight.Medium)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .width('100%')
+        }
         if (this.secondaryText().length > 0) {
           Text(this.secondaryText())
             .fontSize(12)
@@ -154,6 +158,7 @@ export struct TransactionRow {
             .width('100%')
         }
       }
+
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
       .margin({ left: 0, right: 8 })

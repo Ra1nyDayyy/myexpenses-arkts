@@ -121,8 +121,12 @@
       "value": "#666666"
     },
     {
+      "name": "chipBackground",
+      "value": "#E0E0E0"
+    },
+    {
       "name": "dividerColor",
-      "value": "#EEEEEE"
+      "value": "#E0E0E0"
     },
     {
       "name": "tabBarBackground",
@@ -130,23 +134,23 @@
     },
     {
       "name": "rowSelectedBackground",
-      "value": "#1A000000"
+      "value": "#E3F2FD"
     },
     {
       "name": "primaryContainer",
-      "value": "#E6F0FF"
+      "value": "#E3F2FD"
     },
     {
       "name": "textTertiary",
-      "value": "#808080"
+      "value": "#999999"
     },
     {
       "name": "summaryCardBackground",
-      "value": "#FEF7FF"
+      "value": "#FFFFFF"
     },
     {
       "name": "defaultAccountColor",
-      "value": "#009688"
+      "value": "#FFC107"
     },
     {
       "name": "defaultTagColor",
@@ -154,11 +158,11 @@
     },
     {
       "name": "floatTabBarBackground",
-      "value": "#F2F2F7"
+      "value": "#FFFFFF"
     },
     {
       "name": "floatTabItemActive",
-      "value": "#1A0050A7"
+      "value": "#E3F2FD"
     }
   ]
 }
