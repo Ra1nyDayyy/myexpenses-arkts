@@ -1,6 +1,7 @@
 import { Transaction, CrStatus } from '../model/Transaction';
 import { Account, AccountGrouping } from '../model/Account';
 import { TransactionRow } from './TransactionRow';
+import { EmptyState } from './EmptyState';
 
 import { formatMoney } from '../model/Money';
 import { currencyByCode } from '../model/CurrencyUnit';
@@ -25,6 +26,9 @@ export struct TransactionListPage {
   onToggleStatus: (id: number) => void = () => {
   };
   onClickTransaction: (id: number) => void = () => {
+  };
+  // 长按交易行：进入多选模式并选中该项（对齐安卓 startMyActionMode 长按）
+  onLongPressTransaction: (id: number) => void = () => {
   };
   onMenuAction: (id: number, action: string) => void = () => {
   };
@@ -98,17 +102,13 @@ export struct TransactionListPage {
   build() {
     Column() {
       if (this.transactions.length === 0) {
-        // 空态：对齐安卓 no_expenses —— 纯文字居中（无图标/按钮）
-        Column() {
-          Text('未有开支!')
-            .fontSize(17)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.textPrimary'))
-            .textAlign(TextAlign.Center)
-        }
+        EmptyState({
+          iconResource: $r('app.media.ic_expense'),
+          title: '还没有交易',
+          subtitle: '新增一笔收支后，交易记录会显示在这里'
+        })
         .width('100%')
         .layoutWeight(1)
-        .justifyContent(FlexAlign.Center)
       } else {
         List({ space: 0 }) {
           ForEach(Array.from(this.grouped().keys()), (groupKey: string) => {
@@ -127,7 +127,7 @@ export struct TransactionListPage {
                       this.onToggleStatus(id);
                     },
                     onItemLongPress: (id: number) => {
-                      this.onClickTransaction(id);
+                      this.onLongPressTransaction(id);
                     },
                     onItemClick: (id: number) => {
                       this.onClickTransaction(id);
@@ -145,6 +145,7 @@ export struct TransactionListPage {
     }
     .width('100%')
     .height('100%')
+    .backgroundColor($r('app.color.pageBackground'))
   }
 
   @Builder
@@ -160,9 +161,9 @@ export struct TransactionListPage {
         .fontColor($r('app.color.textSecondary'))
     }
     .width('100%')
-    .height(40)
-    .padding({ left: 12, right: 12 })
-    .backgroundColor($r('app.color.cardBackgroundColor'))
+    .height(44)
+    .padding({ left: 16, right: 16 })
+    .backgroundColor($r('app.color.surfaceSecondary'))
     .alignItems(VerticalAlign.Center)
   }
 

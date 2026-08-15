@@ -1,6 +1,6 @@
 /**
- * 统一页面顶部栏（鸿蒙原生风格）
- * 左侧返回箭头 + 标题 + 右侧可选操作（文本/符号按钮）
+ * 统一页面顶部栏（鸿蒙原生风格）。
+ * 保留原有属性与回调契约，只统一标题、触控区域、状态色和无障碍语义。
  */
 @Component
 export struct PageHeader {
@@ -8,22 +8,16 @@ export struct PageHeader {
   @Prop showBack: boolean = true;
   @Prop rightText: string = '';
   @Prop showMore: boolean = false;
-  /** 帮助按钮（对齐安卓 Toolbar 帮助图标） */
   @Prop showHelp: boolean = false;
-  /** 图表按钮（资产负债表右上角，对齐安卓 TooltipIconButton 图表开关） */
   @Prop showChart: boolean = false;
-  /** 更多按钮下拉菜单（对齐安卓 TooltipIconMenu：在按钮附近展开，非弹窗） */
   @Prop moreMenu: Array<MenuElement> = [];
-  /** 语音输入按钮（AI 助手等） */
   @Prop showSpeech: boolean = false;
-  /** 标题下拉菜单（对齐安卓标题下拉切换类型，就近展开非弹窗） */
   @Prop titleMenu: Array<MenuElement> = [];
-  /** 筛选按钮（对齐安卓 ic_filter，TYPE_FILTER_COMMAND；filterActive 时高亮） */
   @Prop showFilter: boolean = false;
   @Prop filterActive: boolean = false;
-  /** 搜索按钮（对齐安卓 ic_menu_search，SEARCH_COMMAND；searchActive 时高亮） */
   @Prop showSearch: boolean = false;
   @Prop searchActive: boolean = false;
+  @Prop showTemplates: boolean = false;
   onBack: () => void = () => {
   };
   onRight: () => void = () => {
@@ -40,133 +34,131 @@ export struct PageHeader {
   };
   onSearch: () => void = () => {
   };
+  onTemplates: () => void = () => {
+  };
+
+  @Builder
+  iconAction(icon: Resource, label: string, color: ResourceColor, onClick: () => void) {
+    Button() {
+      Image(icon)
+        .width(22)
+        .height(22)
+        .fillColor(color)
+    }
+    .type(ButtonType.Circle)
+    .width($r('app.float.native_touch_target'))
+    .height($r('app.float.native_touch_target'))
+    .backgroundColor(Color.Transparent)
+    .stateEffect(true)
+    .accessibilityText(label)
+    .onClick(onClick)
+  }
 
   build() {
     Row() {
-      // 返回按钮
       if (this.showBack) {
-        Image($r('sys.media.ohos_ic_public_arrow_left'))
-          .width(24)
-          .height(24)
-          .onClick(() => {
-            this.onBack();
-          })
-      } else {
-        Blank()
-          .width(24)
+        this.iconAction(
+          $r('sys.media.ohos_ic_public_arrow_left'),
+          '返回',
+          $r('app.color.textPrimary'),
+          () => this.onBack()
+        )
       }
 
       if (this.titleMenu.length > 0) {
         Row() {
           Text(this.title)
-            .fontSize(18)
-            .fontWeight(FontWeight.Medium)
+            .fontSize(20)
+            .fontWeight(FontWeight.Bold)
             .fontColor($r('app.color.textPrimary'))
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
           Image($r('sys.media.ohos_ic_public_arrow_down'))
             .width(14)
             .height(14)
+            .fillColor($r('app.color.iconSecondary'))
             .margin({ left: 4 })
         }
-        .margin({ left: 12 })
+        .height($r('app.float.native_touch_target'))
+        .margin({ left: this.showBack ? 0 : 8 })
         .bindMenu(this.titleMenu)
       } else {
         Text(this.title)
-          .fontSize(18)
-          .fontWeight(FontWeight.Medium)
+          .fontSize(20)
+          .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.textPrimary'))
-          .margin({ left: 12 })
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .margin({ left: this.showBack ? 0 : 8 })
       }
       Blank()
 
-
-      // 右侧操作（文本按钮）
       if (this.rightText.length > 0) {
-        Text(this.rightText)
+        Button(this.rightText)
+          .height($r('app.float.native_touch_target'))
+          .padding({ left: 14, right: 14 })
+          .backgroundColor(Color.Transparent)
           .fontSize(16)
           .fontColor($r('app.color.primaryColor'))
           .fontWeight(FontWeight.Medium)
+          .stateEffect(true)
           .onClick(() => {
             this.onRight();
           })
       }
 
-      // 语音输入按钮（对齐 AI 助手语音）
       if (this.showSpeech) {
-        Image($r('app.media.ic_mic'))
-          .width(22)
-          .height(22)
-          .margin({ left: 16 })
-          .fillColor($r('app.color.textSecondary'))
-          .onClick(() => {
-            this.onSpeech();
-          })
+        this.iconAction($r('app.media.ic_mic'), '语音输入', $r('app.color.iconSecondary'), () => this.onSpeech())
       }
-
-      // 图表按钮（资产负债表右上角，对齐安卓图表开关）
       if (this.showChart) {
-        Image($r('app.media.ic_chart'))
-          .width(22)
-          .height(22)
-          .margin({ left: 16 })
-          .fillColor($r('app.color.textSecondary'))
-          .onClick(() => {
-            this.onChart();
-          })
+        this.iconAction($r('app.media.ic_chart'), '切换图表', $r('app.color.iconSecondary'), () => this.onChart())
       }
-
-      // 帮助图标（对齐安卓 Toolbar 帮助按钮）
       if (this.showHelp) {
-        Image($r('app.media.ic_help'))
-          .width(22)
-          .height(22)
-          .margin({ left: 16 })
-          .fillColor($r('app.color.textSecondary'))
-          .onClick(() => {
-            this.onHelp();
-          })
+        this.iconAction($r('app.media.ic_help'), '帮助', $r('app.color.iconSecondary'), () => this.onHelp())
       }
-
-      // 筛选按钮（对齐安卓 ic_filter / TYPE_FILTER_COMMAND）
       if (this.showFilter) {
-        Image($r('app.media.ic_filter'))
-          .width(22)
-          .height(22)
-          .margin({ left: 16 })
-          .fillColor(this.filterActive ? $r('app.color.primaryColor') : $r('app.color.textSecondary'))
-          .onClick(() => {
-            this.onFilter();
-          })
+        this.iconAction(
+          $r('app.media.ic_filter'),
+          this.filterActive ? '筛选已启用' : '筛选',
+          this.filterActive ? $r('app.color.primaryColor') : $r('app.color.iconSecondary'),
+          () => this.onFilter()
+        )
       }
-
-      // 搜索按钮（对齐安卓 ic_menu_search / SEARCH_COMMAND）
       if (this.showSearch) {
-        Image($r('sys.media.ohos_ic_public_search_filled'))
-          .width(22)
-          .height(22)
-          .margin({ left: 16 })
-          .fillColor(this.searchActive ? $r('app.color.primaryColor') : $r('app.color.textSecondary'))
-          .onClick(() => {
-            this.onSearch();
-          })
+        this.iconAction(
+          $r('sys.media.ohos_ic_public_search_filled'),
+          '搜索',
+          this.searchActive ? $r('app.color.primaryColor') : $r('app.color.iconSecondary'),
+          () => this.onSearch()
+        )
       }
-
-      // 更多选项图标（对齐安卓：有菜单时在按钮附近下拉展开，否则触发回调）
+      if (this.showTemplates) {
+        this.iconAction($r('app.media.ic_tab_template'), '我的模板', $r('app.color.iconSecondary'), () => this.onTemplates())
+      }
       if (this.showMore) {
-        Image($r('sys.media.ohos_ic_public_more'))
-          .width(22)
-          .height(22)
-          .margin({ left: 16 })
-          .bindMenu(this.moreMenu)
-          .onClick(() => {
-            if (this.moreMenu.length === 0) {
-              this.onMore();
-            }
-          })
+        Button() {
+          Image($r('sys.media.ohos_ic_public_more'))
+            .width(22)
+            .height(22)
+            .fillColor($r('app.color.iconSecondary'))
+        }
+        .type(ButtonType.Circle)
+        .width($r('app.float.native_touch_target'))
+        .height($r('app.float.native_touch_target'))
+        .backgroundColor(Color.Transparent)
+        .stateEffect(true)
+        .accessibilityText('更多操作')
+        .bindMenu(this.moreMenu)
+        .onClick(() => {
+          if (this.moreMenu.length === 0) {
+            this.onMore();
+          }
+        })
       }
     }
     .width('100%')
-    .height(56)
-    .padding({ left: 8, right: 16 })
+    .height($r('app.float.native_header_height'))
+    .padding({ left: this.showBack ? 4 : 8, right: 4 })
     .backgroundColor($r('app.color.pageBackground'))
   }
 }

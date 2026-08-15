@@ -13,45 +13,49 @@ export struct EmptyState {
   };
 
   build() {
-    Column({ space: 16 }) {
-      // 图标占位（圆形底）
+    Column({ space: 12 }) {
       Stack() {
         if (this.iconResource !== null) {
           Image(this.iconResource)
-            .width(36)
-            .height(36)
-            .fillColor($r('app.color.textSecondary'))
+            .width(38)
+            .height(38)
+            .fillColor($r('app.color.iconSecondary'))
         } else {
           Text(this.icon)
             .fontSize(36)
         }
       }
-      .width(72)
-      .height(72)
-      .borderRadius(36)
-      .backgroundColor($r('app.color.cardBackgroundColor'))
+      .width(80)
+      .height(80)
+      .borderRadius(40)
+      .backgroundColor($r('app.color.surfaceSecondary'))
       .alignContent(Alignment.Center)
+      .margin({ bottom: 4 })
 
       Text(this.title)
-        .fontSize(17)
-        .fontWeight(FontWeight.Medium)
+        .fontSize(18)
+        .fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.textPrimary'))
 
       if (this.subtitle.length > 0) {
         Text(this.subtitle)
-          .fontSize(13)
+          .fontSize(14)
           .fontColor($r('app.color.textSecondary'))
           .textAlign(TextAlign.Center)
-          .lineHeight(20)
-          .padding({ left: 24, right: 24 })
+          .lineHeight(21)
+          .padding({ left: 32, right: 32 })
       }
 
       if (this.actionText.length > 0) {
         Button(this.actionText)
-          .height(40)
+          .height($r('app.float.native_touch_target'))
           .padding({ left: 24, right: 24 })
+          .borderRadius(24)
           .backgroundColor($r('app.color.primaryColor'))
           .fontSize(15)
+          .fontWeight(FontWeight.Medium)
+          .stateEffect(true)
+          .margin({ top: 8 })
           .onClick(() => {
             this.onAction();
           })

@@ -1,6 +1,7 @@
 import { Tag } from '../model/SupportEntities';
 import { Repository } from '../database/Repository';
 import { PageHeader } from '../components/PageHeader';
+import { EmptyState } from '../components/EmptyState';
 import { router } from '@kit.ArkUI';
 
 /**
@@ -83,7 +84,8 @@ struct TagSelect {
         Row() {
           TextInput({ placeholder: '输入标签名称', text: this.newTagLabel })
             .layoutWeight(1)
-            .backgroundColor(Color.White)
+            .height(48)
+            .backgroundColor($r('app.color.surfaceSecondary'))
             .onChange((v: string) => {
               this.newTagLabel = v;
             })
@@ -92,6 +94,7 @@ struct TagSelect {
             })
 
           Button('创建')
+            .height(44)
             .fontSize(14)
             .margin({ left: 8 })
             .backgroundColor($r('app.color.primaryColor'))
@@ -106,16 +109,15 @@ struct TagSelect {
 
         // 标签列表
         if (this.tags.length === 0) {
-          Column() {
-            Text('暂无标签')
-              .fontSize(15)
-              .fontColor($r('app.color.textSecondary'))
-          }
+          EmptyState({
+            iconResource: $r('app.media.ic_tag'),
+            title: '暂无标签',
+            subtitle: '输入名称创建第一个标签'
+          })
           .width('100%')
           .layoutWeight(1)
-          .justifyContent(FlexAlign.Center)
         } else {
-          List() {
+          List({ space: 8 }) {
             ForEach(this.tags, (tag: Tag) => {
               ListItem() {
                 Row() {
@@ -141,19 +143,19 @@ struct TagSelect {
                   }
                 }
                 .width('100%')
-                .height(56)
+                .height(64)
                 .padding({ right: 16 })
-                .backgroundColor(Color.White)
+                .margin({ left: 12, right: 12 })
+                .borderRadius($r('app.float.native_card_radius'))
+                .backgroundColor(this.selectedTagIds.includes(tag.id) ? $r('app.color.surfaceBrandSoft') : $r('app.color.surfacePrimary'))
                 .onClick(() => {
                   this.toggleTag(tag.id);
                 })
               }
-              .backgroundColor(Color.White)
             })
           }
           .layoutWeight(1)
           .backgroundColor($r('app.color.pageBackground'))
-          .divider({ strokeWidth: 0.5, color: $r('app.color.dividerColor') })
         }
       }
       .width('100%')
@@ -161,17 +163,19 @@ struct TagSelect {
       .backgroundColor($r('app.color.pageBackground'))
 
       // 右下角FAB:确认（对齐安卓 floatingActionButton）
-      Stack({ alignContent: Alignment.Center }) {
+      Button() {
         Image($r('sys.media.ohos_ic_public_ok'))
-          .width(26)
-          .height(26)
+          .width(24)
+          .height(24)
           .fillColor(Color.White)
       }
+      .type(ButtonType.Circle)
       .width(56)
       .height(56)
-      .borderRadius(16)
       .backgroundColor($r('app.color.primaryColor'))
-      .shadow({ radius: 10, color: '#33000000', offsetY: 3 })
+      .stateEffect(true)
+      .shadow({ radius: 6, color: '#26000000', offsetY: 3 })
+      .accessibilityText('确认标签选择')
       .markAnchor({ x: '100%', y: '100%' })
       .position({ x: '94%', y: '95%' })
       .onClick(() => {

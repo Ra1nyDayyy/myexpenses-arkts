@@ -3,6 +3,7 @@ import { Repository } from '../database/Repository';
 import { formatMoney } from '../model/Money';
 import { currencyByCode } from '../model/CurrencyUnit';
 import { formatDate } from '../common/FormatUtils';
+import { EmptyState } from '../components/EmptyState';
 import { promptAction } from '@kit.ArkUI';
 
 /**
@@ -158,81 +159,108 @@ export struct DebtManage {
 
   build() {
     NavDestination() {
-      Column() {
-        if (this.debts.length === 0) {
-          Column({ space: 12 }) {
-            Text('暂无债务')
-              .fontSize(16)
-              .fontColor($r('app.color.textSecondary'))
-            Button('新建债务')
-              .backgroundColor($r('app.color.primaryColor'))
-              .onClick(() => {
-                this.openAddDialog();
-              })
-          }
-          .width('100%')
-          .layoutWeight(1)
-          .justifyContent(FlexAlign.Center)
-          .alignItems(HorizontalAlign.Center)
-        } else {
-          List({ space: 0 }) {
-            ForEach(this.debts, (d: Debt) => {
-              ListItem() {
-                Row() {
-                  Column({ space: 2 }) {
-                    Text(d.label)
-                      .fontSize(15)
+      Stack() {
+        Column() {
+          if (this.debts.length === 0) {
+            EmptyState({
+              iconResource: $r('app.media.ic_locked'),
+              title: '暂无债务',
+              subtitle: '点击右下角按钮新建债务记录'
+            })
+            .width('100%')
+            .layoutWeight(1)
+          } else {
+            List({ space: 8 }) {
+              ForEach(this.debts, (d: Debt) => {
+                ListItem() {
+                  Row() {
+                    Column({ space: 2 }) {
+                      Text(d.label)
+                        .fontSize(16)
+                        .fontWeight(FontWeight.Bold)
+                        .fontColor($r('app.color.textPrimary'))
+                      Text(`${d.description || '未设置描述'} · ${formatDate(d.date)}`)
+                        .fontSize(12)
+                        .fontColor($r('app.color.textSecondary'))
+                    }
+                    .layoutWeight(1)
+                    .alignItems(HorizontalAlign.Start)
+
+                    Text(`¥${formatMoney(d.amount, 2)}`)
+                      .fontSize(16)
                       .fontWeight(FontWeight.Medium)
-                      .fontColor($r('app.color.textPrimary'))
-                    Text(`${d.description || '未设置描述'} · ${formatDate(d.date)}`)
-                      .fontSize(12)
-                      .fontColor($r('app.color.textSecondary'))
-                  }
-                  .layoutWeight(1)
-                  .alignItems(HorizontalAlign.Start)
+                      .fontColor($r('app.color.colorExpense'))
 
-                  Text(`¥${formatMoney(d.amount, 2)}`)
-                    .fontSize(14)
-                    .fontColor($r('app.color.colorExpense'))
-
-                  // 删除按钮：Button 包裹保证足够点击热区（P0-3）
-                  Button() {
-                    Image($r('sys.media.ohos_ic_public_close'))
-                      .width(16)
-                      .height(16)
-                      .opacity(0.6)
+                    // 删除按钮：Button 包裹保证足够点击热区（P0-3）
+                    Button() {
+                      Image($r('sys.media.ohos_ic_public_close'))
+                        .width(16)
+                        .height(16)
+                        .opacity(0.6)
+                    }
+                    .type(ButtonType.Normal)
+                    .width($r('app.float.native_touch_target'))
+                    .height($r('app.float.native_touch_target'))
+                    .backgroundColor(Color.Transparent)
+                    .margin({ left: 8 })
+                    .onClick(() => {
+                      this.confirmDeleteDebt(d);
+                    })
                   }
-                  .type(ButtonType.Normal)
-                  .width(40)
-                  .height(40)
-                  .backgroundColor(Color.Transparent)
-                  .margin({ left: 8 })
-                  .onClick(() => {
-                    this.confirmDeleteDebt(d);
-                  })
+                  .width('100%')
+                  .height(68)
+                  .padding({ left: 16, right: 16 })
+                  .margin({ left: 12, right: 12 })
+                  .borderRadius($r('app.float.native_card_radius'))
+                  .backgroundColor($r('app.color.surfacePrimary'))
                 }
-                .width('100%')
-                .height(56)
-                .padding({ left: 16, right: 16 })
-                .backgroundColor($r('app.color.cardBackgroundColor'))
-                .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
-              }
-            }, (d: Debt) => `debt_${d.id}`)
+              }, (d: Debt) => `debt_${d.id}`)
+            }
+            .layoutWeight(1)
+            .width('100%')
+            .padding({ bottom: 88 })
           }
-          .layoutWeight(1)
-          .width('100%')
         }
+        .width('100%')
+        .height('100%')
+        .backgroundColor($r('app.color.pageBackground'))
+
+        // 右下角FAB：新建债务（对齐安卓）
+        Button() {
+          Image($r('sys.media.ohos_ic_public_add'))
+            .width(24)
+            .height(24)
+            .fillColor(Color.White)
+        }
+        .width(56)
+        .height(56)
+        .type(ButtonType.Circle)
+        .backgroundColor($r('app.color.primaryColor'))
+        .stateEffect(true)
+        .accessibilityText('新建债务')
+        .position({ x: '100%', y: '100%' })
+        .translate({ x: -72, y: -72 })
+        .onClick(() => {
+          this.openAddDialog();
+        })
       }
       .width('100%')
       .height('100%')
-      .backgroundColor($r('app.color.pageBackground'))
     }
-    .title('债务')
+    .title('交易对手/债务')
     .menus([
       {
-        value: '+',
+        value: '搜索',
+        icon: $r('sys.media.ohos_ic_public_search_filled'),
         action: () => {
-          this.openAddDialog();
+          promptAction.showToast({ message: '搜索功能开发中' });
+        }
+      },
+      {
+        value: '帮助',
+        icon: $r('app.media.ic_help'),
+        action: () => {
+          promptAction.showToast({ message: '帮助功能开发中' });
         }
       }
     ])

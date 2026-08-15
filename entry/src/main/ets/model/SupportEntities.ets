@@ -94,6 +94,8 @@ export class Template {
   lastExecuted: number = 0;
   autoExecute: boolean = false; // 自动执行开关
   advanceDays: number = 0; // 提前执行天数 0-30
+  /** 默认操作（对齐安卓 Template.Action：SAVE=点击直接创建交易，EDIT=点击打开编辑页） */
+  defaultAction: string = 'SAVE';
 
   isTransfer(): boolean {
     return this.transferAccountId !== -1;

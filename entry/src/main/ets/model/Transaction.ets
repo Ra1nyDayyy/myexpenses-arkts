@@ -35,6 +35,9 @@ export class Transaction {
   debtId: number = -1;
   tagIds: number[] = [];
   uuid: string = '';
+  // 位置（对齐安卓 Android 交易位置记录）
+  latitude: number = 0;
+  longitude: number = 0;
   // 展示字段
   categoryPath: string = '';
   payeeName: string = '';

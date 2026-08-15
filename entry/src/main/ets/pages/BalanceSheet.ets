@@ -675,32 +675,14 @@ export struct BalanceSheetView {
   }
 
 
-  /** 独立页面更多菜单（对齐安卓 BalanceSheetOptions + 导出入口） */
-  private showOptionsSheet(): void {
-    const sheets: Array<SheetInfo> = [];
-    this.optionsMenu().forEach((m: MenuElement) => {
-      sheets.push({
-        title: m.value,
-        action: m.action
-      } as SheetInfo);
-    });
-    sheets.push({
-      title: '导出为 PDF',
-      action: () => {
-        this.exportToPdf();
-      }
-    } as SheetInfo);
-    const options: ActionSheetOptions = {
-      title: '资产负债表',
-      message: '请选择操作',
-      confirm: {
-        value: '取消',
-        action: () => {
-        }
-      },
-      sheets: sheets
-    };
-    this.getUIContext().showActionSheet(options);
+  /** 独立页面的短操作列表锚定在顶栏更多按钮。 */
+  private standaloneOptionsMenu(): Array<MenuElement> {
+    const menu = this.optionsMenu();
+    menu.push({
+      value: '导出为 PDF',
+      action: () => this.exportToPdf()
+    } as MenuElement);
+    return menu;
   }
 
   // ==================== PDF 导出（Canvas 渲染 + 手动构造 PDF，兼容纯 OpenHarmony） ====================
@@ -884,11 +866,11 @@ export struct BalanceSheetView {
           title: '资产负债表',
           showMore: true,
           showChart: true,
+          moreMenu: this.standaloneOptionsMenu(),
           onBack: () => {
             router.back();
           },
           onMore: () => {
-            this.showOptionsSheet();
           },
           onChart: () => {
             this.toggleChart();

@@ -25,6 +25,7 @@ export struct CategoryInputDialog {
       TextInput({ placeholder: this.placeholder, text: this.label })
         .width('100%')
         .height(44)
+        .backgroundColor($r('app.color.surfaceSecondary'))
         .onChange((v: string) => {
           this.label = v;
         })
@@ -32,7 +33,7 @@ export struct CategoryInputDialog {
       Row({ space: 12 }) {
         Button('取消')
           .layoutWeight(1)
-          .backgroundColor($r('app.color.cardBackgroundColor'))
+          .backgroundColor($r('app.color.surfaceSecondary'))
           .fontColor($r('app.color.textPrimary'))
           .onClick(() => {
             this.controller?.close();
@@ -158,7 +159,7 @@ struct CategoryManage {
         }
       })
 
-      List({ space: 0 }) {
+      List({ space: 8 }) {
         ForEach(this.categories, (cat: Category) => {
           ListItem() {
             this.categoryRow(cat, 0)
@@ -167,6 +168,7 @@ struct CategoryManage {
       }
       .layoutWeight(1)
       .width('100%')
+      .padding({ left: 12, right: 12 })
       .editMode(this.dragEditMode)
       .onItemMove((from: number, to: number) => {
         this.reorderCategories(from, to);
@@ -216,7 +218,8 @@ struct CategoryManage {
             .width(16)
         }
         Text(cat.label)
-          .fontSize(15)
+          .fontSize(16)
+          .fontWeight(FontWeight.Medium)
           .layoutWeight(1)
           .margin({ left: 4 })
 
@@ -238,9 +241,10 @@ struct CategoryManage {
           })
       }
       .width('100%')
-      .height(48)
+      .height(60)
       .padding({ left: 16 + depth * 20, right: 12 })
-      .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
+      .backgroundColor($r('app.color.surfacePrimary'))
+      .borderRadius($r('app.float.native_card_radius'))
 
       if (cat.hasChildren && this.isExpanded(cat.id)) {
         ForEach(cat.children, (child: Category) => {

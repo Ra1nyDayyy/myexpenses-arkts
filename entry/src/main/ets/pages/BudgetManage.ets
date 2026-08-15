@@ -2,6 +2,7 @@ import { Budget } from '../model/SupportEntities';
 import { Account } from '../model/Account';
 import { Repository } from '../database/Repository';
 import { formatMoney } from '../model/Money';
+import { EmptyState } from '../components/EmptyState';
 import { currencyByCode } from '../model/CurrencyUnit';
 import { promptAction } from '@kit.ArkUI';
 
@@ -193,74 +194,93 @@ export struct BudgetManage {
 
   build() {
     NavDestination() {
-      Column() {
-        if (this.budgets.length === 0) {
-          Column({ space: 12 }) {
-            Text('暂无预算')
-              .fontSize(16)
-              .fontColor($r('app.color.textSecondary'))
-            Button('新建预算')
-              .backgroundColor($r('app.color.primaryColor'))
-              .onClick(() => {
-                this.openAddDialog();
-              })
-          }
-          .width('100%')
-          .layoutWeight(1)
-          .justifyContent(FlexAlign.Center)
-          .alignItems(HorizontalAlign.Center)
-        } else {
-          List({ space: 0 }) {
-            ForEach(this.budgets, (b: Budget) => {
-              ListItem() {
-                Row() {
-                  Column({ space: 2 }) {
-                    Text(b.title)
-                      .fontSize(15)
-                      .fontWeight(FontWeight.Medium)
-                      .fontColor($r('app.color.textPrimary'))
-                    Text(`${b.description || '未设置描述'} · ${this.symbol(b.currency)}${formatMoney(b.budgetAmount, 2)}`)
-                      .fontSize(12)
-                      .fontColor($r('app.color.textSecondary'))
-                  }
-                  .layoutWeight(1)
-                  .alignItems(HorizontalAlign.Start)
+      Stack() {
+        Column() {
+          if (this.budgets.length === 0) {
+            EmptyState({
+              iconResource: $r('app.media.ic_category'),
+              title: '暂无预算',
+              subtitle: '点击右下角按钮新建预算'
+            })
+            .width('100%')
+            .layoutWeight(1)
+          } else {
+            List({ space: 8 }) {
+              ForEach(this.budgets, (b: Budget) => {
+                ListItem() {
+                  Row() {
+                    Column({ space: 2 }) {
+                      Text(b.title)
+                        .fontSize(16)
+                        .fontWeight(FontWeight.Bold)
+                        .fontColor($r('app.color.textPrimary'))
+                      Text(`${b.description || '未设置描述'} · ${this.symbol(b.currency)}${formatMoney(b.budgetAmount, 2)}`)
+                        .fontSize(12)
+                        .fontColor($r('app.color.textSecondary'))
+                    }
+                    .layoutWeight(1)
+                    .alignItems(HorizontalAlign.Start)
 
-                  // 删除按钮：Button 包裹保证足够点击热区（P0-3）
-                  Button() {
-                    Image($r('sys.media.ohos_ic_public_close'))
-                      .width(16)
-                      .height(16)
-                      .opacity(0.6)
+                    // 删除按钮：Button 包裹保证足够点击热区（P0-3）
+                    Button() {
+                      Image($r('sys.media.ohos_ic_public_close'))
+                        .width(16)
+                        .height(16)
+                        .opacity(0.6)
+                    }
+                    .type(ButtonType.Normal)
+                    .width($r('app.float.native_touch_target'))
+                    .height($r('app.float.native_touch_target'))
+                    .backgroundColor(Color.Transparent)
+                    .onClick(() => {
+                      this.confirmDeleteBudget(b);
+                    })
                   }
-                  .type(ButtonType.Normal)
-                  .width(40)
-                  .height(40)
-                  .backgroundColor(Color.Transparent)
-                  .onClick(() => {
-                    this.confirmDeleteBudget(b);
-                  })
+                  .width('100%')
+                  .height(68)
+                  .padding({ left: 16, right: 16 })
+                  .margin({ left: 12, right: 12 })
+                  .borderRadius($r('app.float.native_card_radius'))
+                  .backgroundColor($r('app.color.surfacePrimary'))
                 }
-                .width('100%')
-                .height(56)
-                .padding({ left: 16, right: 16 })
-                .backgroundColor($r('app.color.cardBackgroundColor'))
-                .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
-              }
-            }, (b: Budget) => `budget_${b.id}`)
+              }, (b: Budget) => `budget_${b.id}`)
+            }
+            .layoutWeight(1)
+            .width('100%')
+            .padding({ bottom: 88 })
           }
-          .layoutWeight(1)
-          .width('100%')
         }
+        .width('100%')
+        .height('100%')
+        .backgroundColor($r('app.color.pageBackground'))
+
+        // 右下角FAB：新建预算（对齐安卓，跳转到独立编辑页面）
+        Button() {
+          Image($r('sys.media.ohos_ic_public_add'))
+            .width(24)
+            .height(24)
+            .fillColor(Color.White)
+        }
+        .width(56)
+        .height(56)
+        .type(ButtonType.Circle)
+        .backgroundColor($r('app.color.primaryColor'))
+        .stateEffect(true)
+        .accessibilityText('新建预算')
+        .position({ x: '100%', y: '100%' })
+        .translate({ x: -72, y: -72 })
+        .onClick(() => {
+          this.openAddDialog();
+        })
       }
       .width('100%')
       .height('100%')
-      .backgroundColor($r('app.color.pageBackground'))
     }
     .title('预算编制')
     .menus([
       {
-        value: '+',
+        value: '新建预算',
+        icon: $r('sys.media.ohos_ic_public_add'),
         action: () => {
           this.openAddDialog();
         }

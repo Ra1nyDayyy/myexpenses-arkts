@@ -24,6 +24,7 @@ export struct MethodInputDialog {
       TextInput({ placeholder: '名称', text: this.label })
         .width('100%')
         .height(44)
+        .backgroundColor($r('app.color.surfaceSecondary'))
         .onChange((v: string) => {
           this.label = v;
         })
@@ -31,7 +32,7 @@ export struct MethodInputDialog {
       Row({ space: 12 }) {
         Button('取消')
           .layoutWeight(1)
-          .backgroundColor($r('app.color.cardBackgroundColor'))
+          .backgroundColor($r('app.color.surfaceSecondary'))
           .fontColor($r('app.color.textPrimary'))
           .onClick(() => {
             this.controller?.close();
@@ -140,12 +141,13 @@ struct MethodManage {
         }
       })
 
-      List() {
+      List({ space: 8 }) {
         ForEach(this.methods, (m: PaymentMethod) => {
           ListItem() {
             Row() {
               Text(m.label)
-                .fontSize(15)
+                .fontSize(16)
+                .fontWeight(FontWeight.Medium)
                 .layoutWeight(1)
               Image($r('sys.media.ohos_ic_public_close'))
                 .width(18)
@@ -156,9 +158,11 @@ struct MethodManage {
                 })
             }
             .width('100%')
-            .height(48)
+            .height(60)
             .padding({ left: 16, right: 12 })
-            .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
+            .margin({ left: 12, right: 12 })
+            .borderRadius($r('app.float.native_card_radius'))
+            .backgroundColor($r('app.color.surfacePrimary'))
           }
         }, (m: PaymentMethod) => `method_${m.id}`)
       }

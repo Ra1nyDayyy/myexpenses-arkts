@@ -5,6 +5,7 @@ import { EmptyState } from './EmptyState';
 import { intToColor } from '../common/Theme';
 import { formatMoney } from '../model/Money';
 import { currencyByCode } from '../model/CurrencyUnit';
+import { Tag } from '../model/SupportEntities';
 
 /**
  * 账户列表组件：对应 Android AccountList
@@ -17,6 +18,7 @@ export struct AccountListPage {
   @Prop grouping: AccountGrouping = AccountGrouping.NONE;
   @Prop selectedAccountId: number = -1;
   @Prop showEquivalent: boolean = false;
+  @Prop accountFlags: Tag[] = [];
   onSelect: (id: number) => void = () => {
   };
   onEdit: (id: number) => void = () => {
@@ -27,7 +29,10 @@ export struct AccountListPage {
   };
   onToggleExclude: (id: number) => void = () => {
   };
-  onSetFlag: (id: number) => void = () => {
+  onApplyFlag: (id: number, flagId: number) => void = () => {
+  };
+  // 动态汇率开关回调（透传给 AccountRow）
+  onToggleDynamicExchangeRate: (id: number) => void = () => {
   };
   onCreateAccount: () => void = () => {
   };
@@ -134,6 +139,7 @@ export struct AccountListPage {
                   selected: acc.id === this.selectedAccountId,
                   expanded: acc.id === this.expandedId,
                   showEquivalent: this.showEquivalent,
+                  accountFlags: this.accountFlags,
                   onToggle: (id: number) => {
                     animateTo({ duration: 200, curve: Curve.EaseInOut }, () => {
                       this.expandedId = this.expandedId === id ? -1 : id;
@@ -154,8 +160,11 @@ export struct AccountListPage {
                   onToggleExclude: (id: number) => {
                     this.onToggleExclude(id);
                   },
-                  onSetFlag: (id: number) => {
-                    this.onSetFlag(id);
+                  onApplyFlag: (id: number, flagId: number) => {
+                    this.onApplyFlag(id, flagId);
+                  },
+                  onToggleDynamicExchangeRate: (id: number) => {
+                    this.onToggleDynamicExchangeRate(id);
                   }
                 })
               }
@@ -180,9 +189,9 @@ export struct AccountListPage {
                 // 组头
                 Row() {
                   Text(groupKey)
-                    .fontSize(13)
+                    .fontSize(14)
                     .fontColor($r('app.color.textSecondary'))
-                    .fontWeight(FontWeight.Medium)
+                    .fontWeight(FontWeight.Bold)
                   Blank()
                   Text(this.groupSumLabel(this.groups().get(groupKey)!))
                     .fontSize(13)
@@ -202,7 +211,8 @@ export struct AccountListPage {
                   }
                 }
                 .width('100%')
-                .padding({ left: 16, right: 16, top: 10, bottom: 6 })
+                .height(44)
+                .padding({ left: 16, right: 16 })
 
                 ForEach(this.groups().get(groupKey)!, (acc: Account) => {
                   AccountRow({
@@ -210,6 +220,7 @@ export struct AccountListPage {
                     selected: acc.id === this.selectedAccountId,
                     expanded: acc.id === this.expandedId,
                     showEquivalent: this.showEquivalent,
+                    accountFlags: this.accountFlags,
                     onToggle: (id: number) => {
                       animateTo({ duration: 200, curve: Curve.EaseInOut }, () => {
                         this.expandedId = this.expandedId === id ? -1 : id;
@@ -229,13 +240,16 @@ export struct AccountListPage {
                     },
                     onToggleExclude: (id: number) => {
                       this.onToggleExclude(id);
+                    },
+                    onApplyFlag: (id: number, flagId: number) => {
+                      this.onApplyFlag(id, flagId);
+                    },
+                    onToggleDynamicExchangeRate: (id: number) => {
+                      this.onToggleDynamicExchangeRate(id);
                     }
                   })
                 }, (acc: Account) => `account_${acc.id}_${acc.sealed}_${acc.excludeFromTotals}_${acc.flagId}`)
 
-                Divider()
-                  .color($r('app.color.dividerColor'))
-                  .strokeWidth(0.5)
               }
             }
           }, (groupKey: string) => `group_${groupKey}`)
@@ -251,7 +265,7 @@ export struct AccountListPage {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.drawerBackground'))
+    .backgroundColor($r('app.color.pageBackground'))
   }
 
   private groupSingle(): boolean {
@@ -278,12 +292,12 @@ export struct AccountListPage {
   grandTotalHeader() {
     Row() {
       Text('累计')
-        .fontSize(13)
+        .fontSize(14)
         .fontColor($r('app.color.textSecondary'))
         .fontWeight(FontWeight.Bold)
       Blank()
       Text(this.grandTotalLabel())
-        .fontSize(13)
+        .fontSize(16)
         .fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.textPrimary'))
       // 右侧箭头：对齐安卓 HeaderV2 的 ChevronRight IconButton，点击跳转交易页累计
@@ -298,7 +312,11 @@ export struct AccountListPage {
         })
     }
     .width('100%')
-    .padding({ left: 16, right: 12, top: 10, bottom: 6 })
+    .height(52)
+    .padding({ left: 16, right: 12 })
+    .margin({ left: 12, right: 12, bottom: 8 })
+    .borderRadius($r('app.float.native_card_radius'))
+    .backgroundColor($r('app.color.surfaceSecondary'))
     .onClick(() => {
       this.onGrandTotal();
     })

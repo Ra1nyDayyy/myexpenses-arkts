@@ -109,21 +109,25 @@ export struct TransactionRow {
       // 类别图标
       Stack() {
         Image(this.iconResource())
-          .width(18)
-          .height(18)
+          .width(20)
+          .height(20)
           .fillColor(this.amountColor())
       }
-      .width(30)
-      .height(30)
+      .width(32)
+      .height(32)
       .alignContent(Alignment.Center)
 
-      // 状态切换块（点击缩放动画 + 涟漪）；ArkUI 点击事件不冒泡，不会触发行级操作菜单
-      Row()
-        .width(8)
-        .height(20)
-        .backgroundColor(this.statusColor())
-        .margin({ left: 4, right: 10 })
-        .borderRadius(2)
+      Stack() {
+        Row()
+          .width(6)
+          .height(24)
+          .backgroundColor(this.statusColor())
+          .borderRadius(3)
+      }
+        .width($r('app.float.native_touch_target'))
+        .height(48)
+        .alignContent(Alignment.Center)
+        .accessibilityText('切换交易状态')
         .onClick(() => {
           animateTo({ duration: 150, curve: Curve.EaseOut }, () => {
             this.onToggleStatus(this.transaction.id);
@@ -143,15 +147,15 @@ export struct TransactionRow {
         }
         if (this.primaryText().length > 0) {
           Text(this.primaryText())
-            .fontSize(15)
-            .fontWeight(FontWeight.Medium)
+            .fontSize(16)
+            .fontWeight(FontWeight.Bold)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
             .width('100%')
         }
         if (this.secondaryText().length > 0) {
           Text(this.secondaryText())
-            .fontSize(12)
+          .fontSize(12)
             .fontColor($r('app.color.textSecondary'))
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -166,7 +170,8 @@ export struct TransactionRow {
       // 金额与日期
       Column({ space: 2 }) {
         Text(`${this.transaction.amount > 0 ? '+' : ''}${this.symbol()}${formatMoney(this.transaction.amount, this.fractionDigits())}`)
-          .fontSize(15)
+          .fontSize(16)
+          .fontWeight(FontWeight.Medium)
           .fontColor(this.amountColor())
           .maxLines(1)
         Text(this.dateText())
@@ -179,13 +184,16 @@ export struct TransactionRow {
       Image($r('sys.media.ohos_ic_public_arrow_right'))
         .width(14)
         .height(14)
-        .opacity(0.35)
+        .fillColor($r('app.color.iconSecondary'))
+        .opacity(0.7)
         .margin({ left: 6 })
     }
     .width('100%')
-    .height(56)
-    .padding({ left: 12, right: 12 })
-    .backgroundColor(this.selected ? $r('app.color.rowSelectedBackground') : Color.Transparent)
+    .height(68)
+    .padding({ left: 12, right: 14 })
+    .margin({ left: 12, right: 12, bottom: 8 })
+    .borderRadius($r('app.float.native_card_radius'))
+    .backgroundColor(this.selected ? $r('app.color.surfaceBrandSoft') : $r('app.color.surfacePrimary'))
     // 操作菜单锚定在交易行下方（对齐安卓 PopupMenu，替代底部 ActionSheet）
     .bindMenu(this.menuItems, { placement: Placement.Bottom })
     .onClick(() => {

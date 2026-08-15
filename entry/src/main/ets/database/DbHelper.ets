@@ -169,7 +169,8 @@ export const CREATE_TABLES: string[] = [
      dt_start INTEGER,
      last_executed INTEGER,
      auto_execute INTEGER NOT NULL DEFAULT 0,
-     advance_days INTEGER NOT NULL DEFAULT 0
+     advance_days INTEGER NOT NULL DEFAULT 0,
+     default_action TEXT NOT NULL DEFAULT 'SAVE'
   )`,
   `CREATE TABLE IF NOT EXISTS attachments (
      id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -259,7 +260,10 @@ export class DbHelper {
       `ALTER TABLE templates ADD COLUMN last_executed INTEGER`,
       `ALTER TABLE templates ADD COLUMN auto_execute INTEGER NOT NULL DEFAULT 0`,
       `ALTER TABLE templates ADD COLUMN advance_days INTEGER NOT NULL DEFAULT 0`,
-      `ALTER TABLE accounts ADD COLUMN flag_id INTEGER NOT NULL DEFAULT 1`
+      `ALTER TABLE templates ADD COLUMN default_action TEXT NOT NULL DEFAULT 'SAVE'`,
+      `ALTER TABLE accounts ADD COLUMN flag_id INTEGER NOT NULL DEFAULT 1`,
+      `ALTER TABLE transactions ADD COLUMN latitude REAL NOT NULL DEFAULT 0`,
+      `ALTER TABLE transactions ADD COLUMN longitude REAL NOT NULL DEFAULT 0`
     ];
     for (let sql of MIGRATIONS) {
       try {

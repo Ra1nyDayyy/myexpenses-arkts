@@ -79,4 +79,25 @@ export class PREF_KEY {
   static readonly THEME: string = 'theme'; // 0 跟随系统 1 浅色 2 深色
   static readonly LANGUAGE: string = 'language';
   static readonly LAST_ACTION: string = 'last_action'; // 交易页 FAB 记住的上次操作：-1 支出 / 1 收入 / 2 转账
+  
+  // 数据设置相关
+  static readonly UNMAPPED_AS_TRANSFER: string = 'unmapped_transaction_as_transfer';
+  static readonly AUTO_EXCHANGE_RATE: string = 'automatic_exchange_rate_download';
+  static readonly AUTO_UPDATE_EQUIVALENT: string = 'equivalent_amounts_automatic_update';
+  
+  // 界面设置相关
+  static readonly FONT_SIZE: string = 'font_size';
+  static readonly AUTO_FILL: string = 'auto_fill_enabled';
+  static readonly AUTO_FILL_AMOUNT: string = 'auto_fill_amount';
+  static readonly AUTO_FILL_CATEGORY: string = 'auto_fill_category';
+  static readonly CATEGORY_ICONS: string = 'category_icons';
+  static readonly TRANSACTION_TIME: string = 'transaction_time';
+  static readonly CLONE_CURRENT_DATE: string = 'clone_with_current_date';
+  
+  // 导入导出设置相关
+  static readonly CSV_SPLIT_CATEGORIES: string = 'csv_export_split_categories';
+  static readonly CSV_CATEGORY_SEPARATOR: string = 'csv_export_category_separator';
+  static readonly CSV_SPLIT_AMOUNT: string = 'csv_export_split_amount';
+  static readonly CSV_SPLIT_DATETIME: string = 'csv_export_split_date_time';
+  static readonly CSV_ORIGINAL_EQUIVALENT: string = 'csv_export_original_equivalent_amounts';
 }

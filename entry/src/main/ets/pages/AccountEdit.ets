@@ -8,6 +8,7 @@ import { AccountColorDialog } from '../components/ColorPickerDialog';
 import { parseMoney, formatMoney } from '../model/Money';
 import { generateUuid } from '../common/FormatUtils';
 import { router, promptAction } from '@kit.ArkUI';
+import { InlineExpansionState } from '../ui/InlineExpansionState';
 
 /**
  * 账户编辑页：对应 Android AccountEdit + one_account.xml
@@ -33,6 +34,7 @@ struct AccountEdit {
   @State openingPositive: boolean = true;
   /** 储蓄目标/信用额度正负开关（对齐安卓 type_switch，默认−支出） */
   @State criterionPositive: boolean = false;
+  @State fieldHelpExpanded: boolean = false;
   /** 默认本币（用于判断是否外币账户） */
   private defaultCurrency: string = 'CNY';
   /** 当前编辑中账户货币（用于动态汇率判断） */
@@ -234,57 +236,6 @@ struct AccountEdit {
     }
   }
 
-  /** 表单字段帮助说明（对齐安卓：点击帮助图标显示各字段说明） */
-  private showFieldHelp(): void {
-    const sheets: Array<SheetInfo> = [];
-    sheets.push({
-      title: '文本标签：标签用于标识账户列表中的账户',
-      action: () => {
-      }
-    } as SheetInfo);
-    sheets.push({
-      title: '描述：此项描述仅为信息告知目的',
-      action: () => {
-      }
-    } as SheetInfo);
-    sheets.push({
-      title: '起始余额：使用该开关，从负的期初余额开始。该按钮可打开计算器',
-      action: () => {
-      }
-    } as SheetInfo);
-    sheets.push({
-      title: '货币：从已提供的所有当前币种列表中选择币种',
-      action: () => {
-      }
-    } as SheetInfo);
-    sheets.push({
-      title: '类型：您可以将账户类型定义为现金、银行、资产、负债或信用卡',
-      action: () => {
-      }
-    } as SheetInfo);
-    sheets.push({
-      title: '颜色：在账户交易列表，此颜色将作为用户界面的主题色',
-      action: () => {
-      }
-    } as SheetInfo);
-    sheets.push({
-      title: '活跃标签：您可以将一个或多个活动标签与每个账户进行关联。当您创建一个新的交易时，基于所选的账户自动对该交易进行标记',
-      action: () => {
-      }
-    } as SheetInfo);
-    const options: ActionSheetOptions = {
-      title: '用于账户的表单',
-      message: '表单字段',
-      confirm: {
-        value: '确定',
-        action: () => {
-        }
-      },
-      sheets: sheets
-    };
-    this.getUIContext().showActionSheet(options);
-  }
-
   /** 更多选项菜单（对齐安卓 AccountEdit 工具栏更多菜单：不计入总数 + 动态汇率） */
   /** 更多按钮下拉菜单（对齐安卓 account_edit.xml 工具栏菜单：在按钮附近展开，非弹窗） */
   private accountMoreMenu(): Array<MenuElement> {
@@ -336,6 +287,56 @@ struct AccountEdit {
     .alignItems(VerticalAlign.Center)
   }
 
+  @Builder
+  fieldHelpPanel() {
+    Column({ space: 8 }) {
+      Row() {
+        Text('账户字段说明')
+          .fontSize(16)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.textPrimary'))
+        Blank()
+        Button('收起')
+          .height($r('app.float.native_touch_target'))
+          .fontSize(13)
+          .fontColor($r('app.color.primaryColor'))
+          .backgroundColor(Color.Transparent)
+          .onClick(() => {
+            this.fieldHelpExpanded = false;
+          })
+      }
+      .width('100%')
+      this.fieldHelpRow('名称', '用于在账户列表中识别账户。')
+      this.fieldHelpRow('描述', '仅作为账户的补充信息。')
+      this.fieldHelpRow('起始余额', '正负开关决定期初余额方向，计算器按钮可辅助输入。')
+      this.fieldHelpRow('货币', '从应用提供的币种列表中选择。')
+      this.fieldHelpRow('类型', '可设为现金、银行、资产、负债或信用卡。')
+      this.fieldHelpRow('颜色', '用于账户列表和交易页的账户标识色。')
+      this.fieldHelpRow('活跃标签', '可关联一个或多个标签，新建交易时按所选账户自动标记。')
+    }
+    .width('100%')
+    .padding(14)
+    .margin({ bottom: 10 })
+    .borderRadius(16)
+    .backgroundColor($r('app.color.surfaceBrandSoft'))
+    .alignItems(HorizontalAlign.Start)
+  }
+
+  @Builder
+  fieldHelpRow(label: string, description: string) {
+    Column({ space: 2 }) {
+      Text(label)
+        .fontSize(13)
+        .fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.textPrimary'))
+      Text(description)
+        .fontSize(13)
+        .fontColor($r('app.color.textSecondary'))
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
+  }
+
   build() {
     Stack() {
     Column() {
@@ -348,7 +349,7 @@ struct AccountEdit {
           router.back();
         },
         onHelp: () => {
-          this.showFieldHelp();
+          this.fieldHelpExpanded = InlineExpansionState.toggle(this.fieldHelpExpanded);
         },
         onMore: () => {
           this.showMoreMenu();
@@ -357,6 +358,9 @@ struct AccountEdit {
 
       Scroll() {
         Column() {
+          if (this.fieldHelpExpanded) {
+            this.fieldHelpPanel()
+          }
           // 名称
           Row() {
             Text('名称')
@@ -588,9 +592,12 @@ struct AccountEdit {
           .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
         }
         .width('100%')
-        .padding({ left: 16, right: 16, top: 8 })
+        .padding({ left: 16, right: 16, top: 8, bottom: 24 })
+        .borderRadius($r('app.float.native_emphasis_radius'))
+        .backgroundColor($r('app.color.surfacePrimary'))
       }
       .layoutWeight(1)
+      .padding({ left: 12, right: 12, bottom: 76 })
       // 内容从页面顶部开始（对齐安卓 NestedScrollView 表单贴工具栏下方）
       // Scroll 默认 align 为 Center，内容高度小于视口时会被垂直居中，需显式顶部对齐
       .align(Alignment.Top)
@@ -598,24 +605,22 @@ struct AccountEdit {
     .width('100%')
     .height('100%')
 
-    // 右下角保存 FAB（对齐安卓：圆角矩形 + 对勾图标）
-    Stack() {
-      Row() {
+    Button() {
         Image($r('app.media.ic_check'))
           .width(24)
           .height(24)
           .fillColor(Color.White)
-      }
-      .width(88)
-      .height(52)
-      .borderRadius(26)
-      .justifyContent(FlexAlign.Center)
-      .backgroundColor($r('app.color.primaryColor'))
-      .shadow({ radius: 8, color: '#40000000', offsetY: 4 })
-      .onClick(() => {
-        this.save();
-      })
     }
+    .type(ButtonType.Capsule)
+    .width(88)
+    .height(52)
+    .backgroundColor($r('app.color.primaryColor'))
+    .stateEffect(true)
+    .shadow({ radius: 6, color: '#26000000', offsetY: 3 })
+    .accessibilityText('保存账户')
+    .onClick(() => {
+      this.save();
+    })
     .markAnchor({ x: '100%', y: '100%' })
     .position({ x: '92%', y: '94%' })
     }

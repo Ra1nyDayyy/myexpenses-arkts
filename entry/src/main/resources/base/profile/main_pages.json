@@ -11,6 +11,8 @@
     "pages/AiAssistant",
     "pages/SearchPage",
     "pages/BalanceSheet",
-    "pages/Settings"
+    "pages/Settings",
+    "pages/Distribution",
+    "pages/History"
   ]
 }

@@ -1,0 +1,399 @@
+import { Repository } from '../database/Repository';
+import { SettingsService, PREF_KEY } from '../database/SettingsService';
+import { DataManager } from '../database/DataManager';
+import { PageHeader } from '../components/PageHeader';
+import { router, promptAction } from '@kit.ArkUI';
+import { common, ConfigurationConstant } from '@kit.AbilityKit';
+
+/**
+ * 设置页：对应 Android PreferenceActivity（扩展设置项）
+ * 分组：数据管理 / 界面 / 显示 / 导入导出 / 关于
+ */
+@Entry
+@Component
+struct Settings {
+  @State showEquivalent: boolean = false;
+  @State showSumDetails: boolean = false;
+  @StorageProp('appTheme') theme: number = 0; // 0 跟随系统 1 浅色 2 深色（AppStorage 持久，页面重建不丢失）
+
+  private repository: Repository = Repository.getInstance();
+  private settings: SettingsService = SettingsService.getInstance();
+  private dataManager: DataManager = DataManager.getInstance();
+
+  aboutToAppear(): void {
+    this.load();
+    const ctx = this.getUIContext().getHostContext();
+    if (ctx) {
+      this.dataManager.setContext(ctx);
+    }
+  }
+
+  async load(): Promise<void> {
+    this.showEquivalent = await this.settings.getBoolean(PREF_KEY.SHOW_EQUIVALENT, false);
+    this.showSumDetails = await this.settings.getBoolean(PREF_KEY.SHOW_SUM_DETAILS, false);
+    // theme 由 @StorageProp('appTheme') 驱动，这里不重复赋值
+    // （启动时 EntryAbility 已把保存值写入 AppStorage）
+  }
+
+  private async toggleEquivalent(v: boolean): Promise<void> {
+    this.showEquivalent = v;
+    await this.settings.setBoolean(PREF_KEY.SHOW_EQUIVALENT, v);
+  }
+
+  private async toggleSumDetails(v: boolean): Promise<void> {
+    this.showSumDetails = v;
+    await this.settings.setBoolean(PREF_KEY.SHOW_SUM_DETAILS, v);
+  }
+
+  /**
+   * 货币管理说明（对齐安卓 ManageCurrencies 入口，ArkTS 简化展示）
+   */
+  private showCurrencies(): void {
+    this.getUIContext().showAlertDialog({
+      title: '货币',
+      message: '应用支持多种货币记账：\n\n' +
+        '· 人民币 (CNY) ¥\n' +
+        '· 美元 (USD) $\n' +
+        '· 欧元 (EUR) €\n' +
+        '· 日元 (JPY) ¥\n' +
+        '· 英镑 (GBP) £\n\n' +
+        '在编辑账户时选择账户币种即可使用。',
+      primaryButton: {
+        value: '知道了',
+        action: () => {
+        }
+      }
+    });
+  }
+
+  /**
+   * 导出 CSV：生成文件并通过文件选择器保存
+   */
+  private async exportCsv(): Promise<void> {
+    promptAction.showToast({ message: '正在导出...' });
+    const ok = await this.dataManager.exportCsv();
+    if (ok) {
+      promptAction.showToast({ message: 'CSV 已导出' });
+    } else {
+      promptAction.showToast({ message: '导出失败或已取消' });
+    }
+  }
+
+  /**
+   * 导入 CSV：从文件选择器选择并解析导入
+   */
+  private async importCsv(): Promise<void> {
+    promptAction.showToast({ message: '正在导入...' });
+    const count = await this.dataManager.importCsv();
+    if (count >= 0) {
+      promptAction.showToast({ message: `成功导入 ${count} 条交易` });
+    } else {
+      promptAction.showToast({ message: '导入失败或已取消' });
+    }
+  }
+
+  /**
+   * 备份/恢复菜单（对齐安卓 BackupRestoreActivity 选项）
+   */
+  private showBackupMenu(): void {
+    const options: ActionSheetOptions = {
+      title: '备份与恢复',
+      message: '选择操作',
+      confirm: {
+        value: '取消',
+        action: () => {
+        }
+      },
+      sheets: [
+        {
+          title: '备份到文件',
+          action: () => {
+            this.backup();
+          }
+        },
+        {
+          title: '从文件恢复',
+          action: () => {
+            this.restore();
+          }
+        }
+      ]
+    };
+    this.getUIContext().showActionSheet(options);
+  }
+
+  private async backup(): Promise<void> {
+    promptAction.showToast({ message: '正在备份...' });
+    const ok = await this.dataManager.backupDatabase();
+    if (ok) {
+      promptAction.showToast({ message: '备份成功' });
+    } else {
+      promptAction.showToast({ message: '备份失败或已取消' });
+    }
+  }
+
+  private async restore(): Promise<void> {
+    this.getUIContext().showAlertDialog({
+      title: '恢复数据',
+      message: '从备份文件恢复将覆盖当前全部数据，且需重启应用后生效。确定继续吗？',
+      primaryButton: {
+        value: '取消',
+        action: () => {
+        }
+      },
+      secondaryButton: {
+        value: '恢复',
+        fontColor: $r('app.color.colorExpense'),
+        action: () => {
+          this.doRestore();
+        }
+      }
+    });
+  }
+
+  private async doRestore(): Promise<void> {
+    promptAction.showToast({ message: '正在恢复...' });
+    const ok = await this.dataManager.restoreDatabase();
+    if (ok) {
+      promptAction.showToast({ message: '恢复成功，请重启应用' });
+    } else {
+      promptAction.showToast({ message: '恢复失败或已取消' });
+    }
+  }
+
+  private themeLabel(): string {
+    if (this.theme === 1) {
+      return '浅色';
+    }
+    if (this.theme === 2) {
+      return '深色';
+    }
+    return '跟随系统';
+  }
+
+  /**
+   * 主题设置：弹选择，通过 AppStorage 通知应用切换颜色模式
+   */
+  private setTheme(): void {
+    const sheets: Array<SheetInfo> = [
+      { title: '跟随系统', action: () => this.applyTheme(0) },
+      { title: '浅色', action: () => this.applyTheme(1) },
+      { title: '深色', action: () => this.applyTheme(2) }
+    ];
+    const options: ActionSheetOptions = {
+      title: '主题',
+      message: '选择界面主题',
+      confirm: {
+        value: '取消',
+        action: () => {
+        }
+      },
+      sheets: sheets
+    };
+    this.getUIContext().showActionSheet(options);
+  }
+
+  private async applyTheme(t: number): Promise<void> {
+
+    // 先持久化设置（供下次启动恢复）
+    await this.settings.setNumber(PREF_KEY.THEME, t);
+    // 立即切换颜色模式（对齐安卓 AppCompatDelegate.setDefaultNightMode）
+    // 0 跟随系统 -> COLOR_MODE_NOT_SET / 1 浅色 -> COLOR_MODE_LIGHT / 2 深色 -> COLOR_MODE_DARK
+    try {
+      const host = this.getUIContext().getHostContext();
+      if (host) {
+        const colorMode: ConfigurationConstant.ColorMode = t === 1
+          ? ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT
+          : (t === 2 ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK
+            : ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
+        host.getApplicationContext().setColorMode(colorMode);
+
+      }
+    } catch (err) {
+      console.error('MyExpenses setColorMode failed: ' + JSON.stringify(err));
+    }
+    // setColorMode 会触发应用资源重载，UI 不再响应状态变更通知。
+    // 对齐安卓 PreferenceActivity.recreate()：强制重建当前页面以正确显示新主题值。
+    setTimeout(() => {
+      AppStorage.setOrCreate('appTheme', t);
+      router.replaceUrl({ url: 'pages/Settings' }).catch(() => {
+      });
+    }, 200);
+    promptAction.showToast({ message: '主题已切换' });
+  }
+
+  build() {
+    Column() {
+      PageHeader({
+        title: '设置',
+        onBack: () => {
+          router.back();
+        }
+      })
+
+      List({ space: 0 }) {
+        // 数据管理
+        ListItem() {
+          this.sectionTitle('数据管理')
+        }
+        ListItem() {
+          this.navRow('账户', () => {
+            router.pushUrl({ url: 'pages/AccountEdit' }).catch(() => {
+            });
+          })
+        }
+        ListItem() {
+          this.navRow('类别', () => {
+            router.pushUrl({ url: 'pages/CategoryManage' }).catch(() => {
+            });
+          })
+        }
+        ListItem() {
+          this.navRow('付款方法', () => {
+            router.pushUrl({ url: 'pages/MethodManage' }).catch(() => {
+            });
+          })
+        }
+        ListItem() {
+          this.navRow('标签', () => {
+            router.pushUrl({ url: 'pages/TagManage' }).catch(() => {
+            });
+          })
+        }
+        ListItem() {
+          this.navRow('货币', () => {
+            this.showCurrencies();
+          })
+        }
+
+        // 界面
+        ListItem() {
+          this.sectionTitle('界面')
+        }
+        ListItem() {
+          this.navRow('主题', () => {
+            this.setTheme();
+          }, this.themeLabel())
+        }
+        ListItem() {
+          this.navRow('语言', () => {
+            promptAction.showToast({ message: '当前仅支持中文' });
+          }, '中文')
+        }
+
+        // 显示
+        ListItem() {
+          this.sectionTitle('显示')
+        }
+        ListItem() {
+          this.switchRow('显示等值', this.showEquivalent, (v: boolean) => {
+            this.toggleEquivalent(v);
+          })
+        }
+        ListItem() {
+          this.switchRow('分组头显示明细', this.showSumDetails, (v: boolean) => {
+            this.toggleSumDetails(v);
+          })
+        }
+
+        // 导入导出
+        ListItem() {
+          this.sectionTitle('导入导出')
+        }
+        ListItem() {
+          this.navRow('CSV 导出', () => {
+            this.exportCsv();
+          })
+        }
+        ListItem() {
+          this.navRow('CSV 导入', () => {
+            this.importCsv();
+          })
+        }
+        ListItem() {
+          this.navRow('备份与恢复', () => {
+            this.showBackupMenu();
+          })
+        }
+
+        // 关于
+        ListItem() {
+          this.sectionTitle('关于')
+        }
+        ListItem() {
+          this.navRow('版本', () => {
+            promptAction.showToast({ message: '开支助手 1.0.0' });
+          }, '1.0.0')
+        }
+        ListItem() {
+          this.navRow('AI 助手', () => {
+            router.pushUrl({ url: 'pages/AiAssistant' }).catch(() => {
+            });
+          })
+        }
+      }
+      .width('100%')
+      .layoutWeight(1)
+      .divider({ strokeWidth: 0.5, color: $r('app.color.dividerColor') })
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor($r('app.color.pageBackground'))
+  }
+
+  @Builder
+  sectionTitle(title: string) {
+    Text(title)
+      .fontSize(13)
+      .fontColor($r('app.color.primaryColor'))
+      .fontWeight(FontWeight.Medium)
+      .width('100%')
+      .height(40)
+      .padding({ left: 16, right: 16, top: 20 })
+  }
+
+  @Builder
+  navRow(label: string, onClick: () => void, value: string = '') {
+    Row() {
+      Text(label)
+        .fontSize(15)
+        .fontColor($r('app.color.textPrimary'))
+        .layoutWeight(1)
+      if (value.length > 0) {
+        Text(value)
+          .fontSize(14)
+          .fontColor($r('app.color.textSecondary'))
+          .margin({ right: 8 })
+      }
+      Image($r('sys.media.ohos_ic_public_arrow_right'))
+        .width(16)
+        .height(16)
+        .opacity(0.4)
+    }
+    .width('100%')
+    .height(52)
+    .padding({ left: 16, right: 16 })
+    .backgroundColor($r('app.color.cardBackgroundColor'))
+    .onClick(() => {
+      onClick();
+    })
+  }
+
+  @Builder
+  switchRow(label: string, checked: boolean, onChange: (v: boolean) => void) {
+    Row() {
+      Text(label)
+        .fontSize(15)
+        .fontColor($r('app.color.textPrimary'))
+        .layoutWeight(1)
+      Toggle({ type: ToggleType.Switch, isOn: checked })
+        .onChange((isOn: boolean) => {
+          onChange(isOn);
+        })
+    }
+    .width('100%')
+    .height(52)
+    .padding({ left: 16, right: 16 })
+    .backgroundColor($r('app.color.cardBackgroundColor'))
+  }
+}

@@ -71,6 +71,38 @@
     {
       "name": "card_radius",
       "value": "8vp"
+    },
+    {
+      "name": "native_page_padding",
+      "value": "16vp"
+    },
+    {
+      "name": "native_content_gap",
+      "value": "12vp"
+    },
+    {
+      "name": "native_card_radius",
+      "value": "12vp"
+    },
+    {
+      "name": "native_emphasis_radius",
+      "value": "16vp"
+    },
+    {
+      "name": "native_list_min_height",
+      "value": "56vp"
+    },
+    {
+      "name": "native_touch_target",
+      "value": "48vp"
+    },
+    {
+      "name": "native_header_height",
+      "value": "56vp"
+    },
+    {
+      "name": "native_bottom_bar_height",
+      "value": "64vp"
     }
   ]
 }

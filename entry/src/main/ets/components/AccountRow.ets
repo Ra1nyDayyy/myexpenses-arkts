@@ -2,6 +2,7 @@ import { Account } from '../model/Account';
 import { intToColor } from '../common/Theme';
 import { formatMoney } from '../model/Money';
 import { currencyByCode } from '../model/CurrencyUnit';
+import { Tag } from '../model/SupportEntities';
 
 /**
  * 账户行组件：对应 Android AccountCardV2
@@ -14,6 +15,7 @@ export struct AccountRow {
   @Prop selected: boolean = false;
   @Prop expanded: boolean = false;
   @Prop showEquivalent: boolean = false;
+  @Prop accountFlags: Tag[] = [];
   onToggle: (id: number) => void = () => {
   };
   onNavigate: (id: number) => void = () => {
@@ -26,7 +28,10 @@ export struct AccountRow {
   };
   onToggleExclude: (id: number) => void = () => {
   };
-  onSetFlag: (id: number) => void = () => {
+  onApplyFlag: (id: number, flagId: number) => void = () => {
+  };
+  // 动态汇率开关（对齐安卓 DYNAMIC_EXCHANGE_RATE：仅外币账户显示）
+  onToggleDynamicExchangeRate: (id: number) => void = () => {
   };
 
   private accountColor(): string {
@@ -44,13 +49,11 @@ export struct AccountRow {
   build() {
     Column() {
       Row() {
-        // 账户颜色指示器
         Stack() {
           if (this.account.criterion > 0) {
-            // 环形进度（简化：圆形+百分比文字）
             Circle()
-              .width(36)
-              .height(36)
+              .width(40)
+              .height(40)
               .fill(Color.Transparent)
               .stroke(this.accountColor())
               .strokeWidth(3)
@@ -59,21 +62,21 @@ export struct AccountRow {
               .fontColor(this.accountColor())
           } else {
             Circle()
-              .width(36)
-              .height(36)
+              .width(40)
+              .height(40)
               .fill(this.accountColor())
           }
         }
-        .width(42)
-        .height(42)
+        .width(44)
+        .height(44)
 
         // 名称与描述
         Column() {
           Row() {
             Text(this.account.label)
-              .fontSize(16)
+              .fontSize(17)
               .fontColor($r('app.color.textPrimary'))
-              .fontWeight(FontWeight.Medium)
+              .fontWeight(FontWeight.Bold)
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
             if (this.account.sealed) {
@@ -95,7 +98,7 @@ export struct AccountRow {
 
           if (this.account.description.length > 0) {
             Text(this.account.description)
-              .fontSize(12)
+              .fontSize(13)
               .fontColor($r('app.color.textSecondary'))
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -104,12 +107,13 @@ export struct AccountRow {
         }
         .layoutWeight(1)
         .alignItems(HorizontalAlign.Start)
-        .margin({ left: 12, right: 8 })
+        .margin({ left: 12, right: 10 })
 
         // 余额
         Column() {
           Text(`${this.symbol()}${formatMoney(this.account.currentBalance, this.fractionDigits())}`)
-            .fontSize(15)
+            .fontSize(16)
+            .fontWeight(FontWeight.Medium)
             .fontColor(this.balanceColor())
             .maxLines(1)
           if (this.showEquivalent && this.account.currency !== 'CNY') {
@@ -120,20 +124,25 @@ export struct AccountRow {
         }
         .alignItems(HorizontalAlign.End)
 
-        Image($r('sys.media.ohos_ic_public_arrow_right'))
-          .width(16)
-          .height(16)
-          .objectFit(ImageFit.Contain)
-          .opacity(0.5)
-          .margin({ left: 4 })
+        Button() {
+          Image($r('sys.media.ohos_ic_public_arrow_right'))
+            .width(16)
+            .height(16)
+            .fillColor($r('app.color.iconSecondary'))
+        }
+          .type(ButtonType.Circle)
+          .width($r('app.float.native_touch_target'))
+          .height($r('app.float.native_touch_target'))
+          .backgroundColor(Color.Transparent)
+          .stateEffect(true)
+          .accessibilityText(`查看${this.account.label}的交易`)
           .onClick(() => {
-            // 点击箭头跳转到交易页显示该账户收支详情（对齐安卓 AccountCard onSelected）
             this.onNavigate(this.account.id);
           })
       }
       .width('100%')
-      .height(48)
-      .padding({ left: 8, right: 8 })
+      .height(68)
+      .padding({ left: 14, right: 8 })
       .onClick(() => {
         this.onToggle(this.account.id);
       })
@@ -159,51 +168,104 @@ export struct AccountRow {
           // 操作按钮行（对齐安卓账户操作）
           // 关闭账户后隐藏"编辑"（对齐安卓 accountMenu: if (!account.sealed) { add(edit) }，
           // sealed 账户不可编辑，需先解除关闭再编辑）
-          Row({ space: 16 }) {
+          Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.End }) {
             if (!this.account.sealed) {
-              Text('编辑')
-                .fontSize(13)
-                .fontColor($r('app.color.primaryColor'))
-                .onClick(() => {
-                  this.onEdit(this.account.id);
-                })
+              this.accountAction('编辑', $r('app.color.primaryColor'), '编辑账户', () => {
+                this.onEdit(this.account.id);
+              })
             }
-            Text('标记')
-              .fontSize(13)
-              .fontColor($r('app.color.primaryColor'))
-              .onClick(() => {
-                this.onSetFlag(this.account.id);
-              })
-            Text(this.account.excludeFromTotals ? '计入总数' : '不计入总数')
-              .fontSize(13)
-              .fontColor($r('app.color.primaryColor'))
-              .onClick(() => {
-                this.onToggleExclude(this.account.id);
-              })
-            Text(this.account.sealed ? '解除关闭' : '关闭账户')
-              .fontSize(13)
-              .fontColor($r('app.color.textTertiary'))
-              .onClick(() => {
-                this.onToggleSealed(this.account.id);
-              })
-            Text('删除')
-              .fontSize(13)
-              .fontColor($r('app.color.colorExpense'))
-              .onClick(() => {
-                this.onDelete(this.account.id);
-              })
+            this.accountFlagAction()
+            this.accountAction(
+              this.account.excludeFromTotals ? '计入总数' : '不计入总数',
+              $r('app.color.primaryColor'),
+              this.account.excludeFromTotals ? '将账户计入总数' : '将账户移出总数',
+              () => this.onToggleExclude(this.account.id)
+            )
+            this.accountAction(
+              this.account.sealed ? '解除关闭' : '关闭账户',
+              $r('app.color.textTertiary'),
+              this.account.sealed ? '重新打开账户' : '关闭账户',
+              () => this.onToggleSealed(this.account.id)
+            )
+            // 动态汇率（对齐安卓 DYNAMIC_EXCHANGE_RATE：仅外币账户显示）
+            if (this.account.currency !== 'CNY') {
+              this.accountAction(
+                this.account.dynamic ? '动态汇率：开' : '动态汇率：关',
+                $r('app.color.primaryColor'),
+                '切换动态汇率',
+                () => this.onToggleDynamicExchangeRate(this.account.id)
+              )
+            }
+            this.accountAction('删除', $r('app.color.colorExpense'), '删除账户', () => {
+              this.onDelete(this.account.id);
+            }, true)
           }
           .width('100%')
-          .justifyContent(FlexAlign.End)
           .margin({ top: 6 })
         }
-        .padding({ left: 62, right: 16, bottom: 12 })
+        .padding({ left: 70, right: 16, bottom: 14 })
         .alignItems(HorizontalAlign.Start)
       }
     }
     .width('100%')
-    .backgroundColor(this.selected ? $r('app.color.rowSelectedBackground') : Color.Transparent)
-    .borderRadius(0)
+    .backgroundColor(this.selected ? $r('app.color.surfaceBrandSoft') : $r('app.color.surfacePrimary'))
+    .borderRadius($r('app.float.native_card_radius'))
+    .margin({ left: 12, right: 12, bottom: 8 })
+  }
+
+  @Builder
+  accountAction(label: string, color: ResourceColor, accessibilityLabel: string,
+    onClick: () => void, destructive: boolean = false) {
+    Button(label)
+      .height($r('app.float.native_touch_target'))
+      .padding({ left: 10, right: 10 })
+      .margin({ right: 4, bottom: 4 })
+      .borderRadius(20)
+      .backgroundColor(destructive ? $r('app.color.surfaceExpenseSoft') : Color.Transparent)
+      .fontSize(13)
+      .fontColor(color)
+      .stateEffect(true)
+      .accessibilityText(accessibilityLabel)
+      .onClick(onClick)
+  }
+
+  @Builder
+  accountFlagAction() {
+    if (this.accountFlags.length > 0) {
+      Button('标记')
+        .height($r('app.float.native_touch_target'))
+        .padding({ left: 12, right: 12 })
+        .margin({ left: 4, bottom: 4 })
+        .fontSize(13)
+        .fontColor($r('app.color.primaryColor'))
+        .backgroundColor($r('app.color.surfaceSecondary'))
+        .borderRadius(14)
+        .stateEffect(true)
+        .accessibilityText('设置账户标记')
+        .bindMenu(this.accountFlagMenu())
+    } else {
+      Button('标记')
+        .height($r('app.float.native_touch_target'))
+        .padding({ left: 12, right: 12 })
+        .margin({ left: 4, bottom: 4 })
+        .fontSize(13)
+        .fontColor($r('app.color.textTertiary'))
+        .backgroundColor($r('app.color.surfaceSecondary'))
+        .borderRadius(14)
+        .stateEffect(true)
+        .accessibilityText('暂无可用账户标记')
+    }
+  }
+
+  private accountFlagMenu(): Array<MenuElement> {
+    const menu: Array<MenuElement> = [];
+    for (let flag of this.accountFlags) {
+      menu.push({
+        value: (this.account.flagId === flag.id ? '✓ ' : '') + flag.label,
+        action: () => this.onApplyFlag(this.account.id, flag.id)
+      } as MenuElement);
+    }
+    return menu;
   }
 
   @Builder

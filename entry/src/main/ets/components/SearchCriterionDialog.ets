@@ -7,6 +7,8 @@
  * - 账户：账户列表选择
  */
 import { Account } from '../model/Account';
+import { Category } from '../model/Category';
+import { PaymentMethod, Payee, Tag } from '../model/SupportEntities';
 
 interface CriterionOption {
   key: string;
@@ -16,9 +18,13 @@ interface CriterionOption {
 @CustomDialog
 export struct SearchCriterionDialog {
   controller?: CustomDialogController;
-  /** 条件类型：amount/comment/status/date/account */
+  /** 条件类型：amount/comment/payee/category/status/date/account/method/tag */
   @Prop criterionType: string = 'amount';
   @Prop accountList: Account[] = [];
+  @Prop categoryList: Category[] = [];
+  @Prop methodList: PaymentMethod[] = [];
+  @Prop tagList: Tag[] = [];
+  @Prop payeeList: Payee[] = [];
   onResult: (op: string, value: string, extra?: string) => void = () => {
   };
   /** 关闭回调（父级 controller 关闭） */
@@ -29,6 +35,10 @@ export struct SearchCriterionDialog {
   @State value: string = '';
   @State extra: string = '支出';
   @State selectedAccountId: number = -1;
+  @State selectedCategoryId: number = -1;
+  @State selectedMethodId: number = -1;
+  @State selectedTagId: number = -1;
+  @State selectedPayeeId: number = -1;
 
   private ops: Array<CriterionOption> = [
     { key: '等于', label: '等于' } as CriterionOption,
@@ -50,9 +60,13 @@ export struct SearchCriterionDialog {
     switch (this.criterionType) {
       case 'amount': return '金额';
       case 'comment': return '备注';
+      case 'payee': return '收款人';
+      case 'category': return '分类';
       case 'status': return '状态';
       case 'date': return '日期';
       case 'account': return '账户';
+      case 'method': return '付款方式';
+      case 'tag': return '标签';
       default: return '';
     }
   }
@@ -63,6 +77,22 @@ export struct SearchCriterionDialog {
     if (this.criterionType === 'account' && this.selectedAccountId > 0) {
       const acc = this.accountList.find((a: Account) => a.id === this.selectedAccountId);
       resultValue = acc ? acc.label : '';
+      resultOp = '等于';
+    } else if (this.criterionType === 'category' && this.selectedCategoryId >= 0) {
+      const cat = this.categoryList.find((c: Category) => c.id === this.selectedCategoryId);
+      resultValue = cat ? cat.label : '';
+      resultOp = '等于';
+    } else if (this.criterionType === 'method' && this.selectedMethodId >= 0) {
+      const m = this.methodList.find((mm: PaymentMethod) => mm.id === this.selectedMethodId);
+      resultValue = m ? m.label : '';
+      resultOp = '等于';
+    } else if (this.criterionType === 'tag' && this.selectedTagId >= 0) {
+      const t = this.tagList.find((tg: Tag) => tg.id === this.selectedTagId);
+      resultValue = t ? t.label : '';
+      resultOp = '等于';
+    } else if (this.criterionType === 'payee' && this.selectedPayeeId >= 0) {
+      const p = this.payeeList.find((pp: Payee) => pp.id === this.selectedPayeeId);
+      resultValue = p ? p.name : '';
       resultOp = '等于';
     }
     this.onResult(resultOp, resultValue, this.extra);
@@ -235,6 +265,136 @@ export struct SearchCriterionDialog {
               this.selectedAccountId = acc.id;
             })
           }, (acc: Account) => `acc_${acc.id}`)
+        }
+        .width('100%')
+        .margin({ top: 8 })
+      }
+
+      // 收款人：列表选择（对齐安卓 PayeeCriterion）
+      if (this.criterionType === 'payee') {
+        Column() {
+          ForEach(this.payeeList, (p: Payee) => {
+            Row() {
+              Text(p.name)
+                .fontSize(14)
+                .fontColor($r('app.color.textPrimary'))
+                .layoutWeight(1)
+              Radio({ value: p.id.toString(), group: 'payeeGroup' })
+                .checked(this.selectedPayeeId === p.id)
+                .radioStyle({
+                  checkedBackgroundColor: $r('app.color.primaryColor'),
+                  uncheckedBorderColor: $r('app.color.textSecondary')
+                })
+                .onChange((checked: boolean) => {
+                  if (checked) {
+                    this.selectedPayeeId = p.id;
+                  }
+                })
+            }
+            .width('100%')
+            .height(44)
+            .onClick(() => {
+              this.selectedPayeeId = p.id;
+            })
+          }, (p: Payee) => `payee_${p.id}`)
+        }
+        .width('100%')
+        .margin({ top: 8 })
+      }
+
+      // 分类：列表选择（对齐安卓 CategoryCriterion）
+      if (this.criterionType === 'category') {
+        Column() {
+          ForEach(this.categoryList, (cat: Category) => {
+            Row() {
+              Text(cat.label)
+                .fontSize(14)
+                .fontColor($r('app.color.textPrimary'))
+                .layoutWeight(1)
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+              Radio({ value: cat.id.toString(), group: 'catGroup' })
+                .checked(this.selectedCategoryId === cat.id)
+                .radioStyle({
+                  checkedBackgroundColor: $r('app.color.primaryColor'),
+                  uncheckedBorderColor: $r('app.color.textSecondary')
+                })
+                .onChange((checked: boolean) => {
+                  if (checked) {
+                    this.selectedCategoryId = cat.id;
+                  }
+                })
+            }
+            .width('100%')
+            .height(44)
+            .onClick(() => {
+              this.selectedCategoryId = cat.id;
+            })
+          }, (cat: Category) => `cat_${cat.id}`)
+        }
+        .width('100%')
+        .margin({ top: 8 })
+      }
+
+      // 付款方式：列表选择（对齐安卓 MethodCriterion）
+      if (this.criterionType === 'method') {
+        Column() {
+          ForEach(this.methodList, (m: PaymentMethod) => {
+            Row() {
+              Text(m.label)
+                .fontSize(14)
+                .fontColor($r('app.color.textPrimary'))
+                .layoutWeight(1)
+              Radio({ value: m.id.toString(), group: 'methodGroup' })
+                .checked(this.selectedMethodId === m.id)
+                .radioStyle({
+                  checkedBackgroundColor: $r('app.color.primaryColor'),
+                  uncheckedBorderColor: $r('app.color.textSecondary')
+                })
+                .onChange((checked: boolean) => {
+                  if (checked) {
+                    this.selectedMethodId = m.id;
+                  }
+                })
+            }
+            .width('100%')
+            .height(44)
+            .onClick(() => {
+              this.selectedMethodId = m.id;
+            })
+          }, (m: PaymentMethod) => `method_${m.id}`)
+        }
+        .width('100%')
+        .margin({ top: 8 })
+      }
+
+      // 标签：列表选择（对齐安卓 TagCriterion）
+      if (this.criterionType === 'tag') {
+        Column() {
+          ForEach(this.tagList, (t: Tag) => {
+            Row() {
+              Text(t.label)
+                .fontSize(14)
+                .fontColor($r('app.color.textPrimary'))
+                .layoutWeight(1)
+              Radio({ value: t.id.toString(), group: 'tagGroup' })
+                .checked(this.selectedTagId === t.id)
+                .radioStyle({
+                  checkedBackgroundColor: $r('app.color.primaryColor'),
+                  uncheckedBorderColor: $r('app.color.textSecondary')
+                })
+                .onChange((checked: boolean) => {
+                  if (checked) {
+                    this.selectedTagId = t.id;
+                  }
+                })
+            }
+            .width('100%')
+            .height(44)
+            .onClick(() => {
+              this.selectedTagId = t.id;
+            })
+          }, (t: Tag) => `tag_${t.id}`)
         }
         .width('100%')
         .margin({ top: 8 })

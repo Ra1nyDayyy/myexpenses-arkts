@@ -13,20 +13,25 @@ import { router, promptAction } from '@kit.ArkUI';
 import { pasteboard } from '@kit.BasicServicesKit';
 import { common } from '@kit.AbilityKit';
 import { BudgetManage } from './BudgetManage';
+import { BudgetEdit } from './BudgetEdit';
 import { DebtManage } from './DebtManage';
 import { BalanceSheetView } from './BalanceSheet';
 import { SortDialog } from '../components/SortDialog';
 import { AccountDetailDialog } from '../components/AccountDetailDialog';
+import { InlineExpansionState } from '../ui/InlineExpansionState';
 
 /**
  * 主界面（V2）：对应 Android MyExpensesV2 + MainScreen
- * 底部 TabBar：账户 / 交易 / 更多
- */
+  * 底部 TabBar：账户 / 交易 / 模板 / 更多
+   * 主内容：根据选中 Tab 显示不同视图（对齐安卓 ViewPager）
+   * 筛选/分组/排序通过顶部右侧按钮触发就近下拉菜单（对齐安卓 TooltipIconMenu）
+   * “更多”使用独立 Tab 页；页面工具使用就地展开，避免大型底部弹窗。
+   */
 @Entry
 @Component
 struct Index {
   @State accounts: Account[] = [];
-  @State selectedTab: number = 0; // 0 账户 1 交易 2 更多
+  @State selectedTab: number = 0; // 0 账户 1 交易 2 模板 3 更多
   /** 账户 Tab 内视图：0=账户列表，1=资产负债表（对齐安卓 AccountsScreenTab，点击左上角标题下拉切换） */
   @State accountView: number = 0;
   /** 资产负债表打印指令计数：headerBar 点击打印图标时递增，触发 BalanceSheetView 导出 PDF */
@@ -61,7 +66,10 @@ struct Index {
   @State templates: Template[] = [];
   /** 模板筛选：-1=全部，0=不重复，2=每天，3=每周，4=每月，6=每年（对齐安卓模板计划筛选） */
   @State templateFilter: number = -1;
+  /** 当前就地展开操作的模板，同一时间仅展开一项 */
+  @State expandedTemplateId: number = -1;
   @State tags: Tag[] = [];
+  @State accountFlags: Tag[] = [];
   // 当前交易列表（响应式数据源：切换账户时整体重新赋值触发列表重渲染）
   @State currentTransactions: Transaction[] = [];
   // 汇总卡片（对齐安卓 Total/收入/支出/转账）：切换账户时由 refreshTransactions 同步更新
@@ -71,6 +79,8 @@ struct Index {
   // 交易页 FAB（对齐安卓 MyExpensesV2 FloatingActionButtonMenu）
   @State fabExpanded: boolean = false; // 展开菜单
   @State lastAction: number = -1; // 记住的上次操作：-1 支出 / 1 收入 / 2 转账
+  /** 交易页就地工具面板（对齐 Android 顶部展开操作） */
+  @State transactionToolsExpanded: boolean = false;
 
 
   private repository: Repository = Repository.getInstance();
@@ -114,6 +124,7 @@ struct Index {
       this.accounts = this.sortAccounts(this.accounts);
       this.templates = await this.repository.getTemplates();
       this.tags = await this.repository.getTags();
+      this.accountFlags = await this.repository.getAccountFlags();
       if (this.accounts.length > 0) {
         if (this.selectedAccountId < 0) {
           this.selectedAccountId = this.accounts[0].id;
@@ -331,12 +342,25 @@ struct Index {
   }
 
   private navigateToAi(): void {
-    router.pushUrl({ url: 'pages/AiAssistant' }).catch(() => {
+    router.pushUrl({
+      url: 'pages/AiAssistant',
+      params: { accountId: this.selectedAccountId }
+    }).catch(() => {
     });
   }
 
   private navigateToSearch(): void {
     router.pushUrl({ url: 'pages/SearchPage' }).catch(() => {
+    });
+  }
+
+  private navigateToDistribution(): void {
+    router.pushUrl({ url: 'pages/Distribution' }).catch(() => {
+    });
+  }
+
+  private navigateToHistory(): void {
+    router.pushUrl({ url: 'pages/History' }).catch(() => {
     });
   }
 
@@ -456,34 +480,49 @@ struct Index {
           .justifyContent(FlexAlign.Center)
           .alignItems(HorizontalAlign.Center)
         } else {
-          // 原生 Tabs：底部 TabBar 贴底（对齐 Android BottomNavigation）
-          // 绑定 index 使其受控：程序修改 selectedTab 时（如点击累计行跳转交易页）同步切换页签内容
-          Tabs({ barPosition: BarPosition.End, index: this.selectedTab }) {
-            TabContent() {
-              this.accountsTab()
-            }.tabBar(this.tabBuilder(0, '账户', $r('app.media.ic_tab_account')))
+          // 底部布局：完全自定义底部栏 + Tabs内容区
+          Column() {
+            // Tabs 内容区（无 TabBar）
+            Tabs({ barPosition: BarPosition.End, index: this.selectedTab }) {
+              TabContent() {
+                this.accountsTab()
+              }
 
-            TabContent() {
-              this.transactionsTab()
-            }.tabBar(this.tabBuilder(1, '交易', $r('app.media.ic_tab_transaction')))
+              TabContent() {
+                this.transactionsTab()
+              }
 
-            TabContent() {
-              this.templatesTab()
-            }.tabBar(this.tabBuilder(2, '模板', $r('app.media.ic_tab_template')))
+              TabContent() {
+                this.templatesTab()
+              }
 
-            TabContent() {
-              this.moreTab()
-            }.tabBar(this.tabBuilder(3, '更多', $r('app.media.ic_tab_more')))
+              TabContent() {
+                this.moreTab()
+              }
+            }
+            .width('100%')
+            .layoutWeight(1)
+            .barHeight(0)
+            .animationDuration(300)
+            .scrollable(false)
+            .onChange((index: number) => {
+              this.selectedTab = index;
+              this.transactionToolsExpanded = false;
+            })
+
+            Row() {
+              this.tabBuilder(0, '账户', $r('app.media.ic_tab_account'))
+              this.tabBuilder(1, '交易', $r('app.media.ic_tab_transaction'))
+              this.tabBuilder(2, '模板', $r('app.media.ic_tab_template'))
+              this.tabBuilder(3, '更多', $r('app.media.ic_tab_more'))
+            }
+            .width('100%')
+            .height($r('app.float.native_bottom_bar_height'))
+            .backgroundColor($r('app.color.tabBarBackground'))
+            .border({ width: { top: 0.5 }, color: $r('app.color.dividerSubtle') })
           }
           .width('100%')
           .layoutWeight(1)
-          .barHeight(56)
-          .animationDuration(300)
-          .scrollable(false)
-          .barBackgroundColor($r('app.color.tabBarBackground'))
-          .onChange((index: number) => {
-            this.selectedTab = index;
-          })
         }
       }
       .width('100%')
@@ -505,6 +544,8 @@ struct Index {
       BudgetManage()
     } else if (name === 'DebtManage') {
       DebtManage()
+    } else if (name === 'BudgetEdit') {
+      BudgetEdit()
     }
   }
 
@@ -514,35 +555,138 @@ struct Index {
    */
   @Builder
   tabBuilder(tabIndex: number, label: string, icon: Resource) {
-    Stack() {
-      Column({ space: 2 }) {
+    Column({ space: 2 }) {
+      Stack() {
+        if (this.selectedTab === tabIndex) {
+          Row()
+            .width(48)
+            .height(28)
+            .borderRadius(14)
+            .backgroundColor($r('app.color.surfaceBrandSoft'))
+        }
         Image(icon)
-          .width(22)
-          .height(22)
-          .fillColor(this.selectedTab === tabIndex ? $r('app.color.primaryColor') : $r('app.color.textSecondary'))
-        Text(label)
-          .fontSize(11)
-          .fontColor(this.selectedTab === tabIndex ? $r('app.color.primaryColor') : $r('app.color.textSecondary'))
-          .fontWeight(this.selectedTab === tabIndex ? FontWeight.Medium : FontWeight.Normal)
+          .width(23)
+          .height(23)
+          .fillColor(this.selectedTab === tabIndex ? $r('app.color.primaryColor') : $r('app.color.iconSecondary'))
+      }
+      .width(52)
+      .height(30)
+      .alignContent(Alignment.Center)
+      Text(label)
+        .fontSize(12)
+        .fontColor(this.selectedTab === tabIndex ? $r('app.color.primaryColor') : $r('app.color.textSecondary'))
+        .fontWeight(this.selectedTab === tabIndex ? FontWeight.Medium : FontWeight.Normal)
+    }
+    .width('25%')
+    .height('100%')
+    .justifyContent(FlexAlign.Center)
+    .accessibilityText(label)
+    .onClick(() => {
+      this.selectedTab = tabIndex;
+      this.transactionToolsExpanded = false;
+    })
+  }
+
+  @Builder
+  moreTab() {
+    Column() {
+      this.headerBar('更多')
+      List({ space: 8 }) {
+        ListItem() {
+          this.moreMenuRow($r('app.media.ic_ai_robot'), 'AI 记账与洞察', '智能记账、分析与建议', () => this.navigateToAi())
+        }
+        ListItem() {
+          this.moreMenuRow($r('app.media.ic_category'), '类别', '管理收支分类', () => {
+            router.pushUrl({ url: 'pages/CategoryManage' }).catch(() => {
+            });
+          })
+        }
+        ListItem() {
+          this.moreMenuRow($r('app.media.ic_method'), '付款方法', '管理付款方式', () => {
+            router.pushUrl({ url: 'pages/MethodManage' }).catch(() => {
+            });
+          })
+        }
+        ListItem() {
+          this.moreMenuRow($r('app.media.ic_tag'), '标签', '管理交易标签', () => {
+            router.pushUrl({ url: 'pages/TagManage' }).catch(() => {
+            });
+          })
+        }
+        ListItem() {
+          this.moreMenuRow($r('app.media.ic_balance'), '资产负债表', '查看资产与负债', () => {
+            router.pushUrl({ url: 'pages/BalanceSheet' }).catch(() => {
+            });
+          })
+        }
+        ListItem() {
+          this.moreMenuRow($r('app.media.ic_chart'), '预算编制', '管理预算和支出目标', () => {
+            this.pathStack.pushPathByName('BudgetManage', null);
+          })
+        }
+        ListItem() {
+          this.moreMenuRow($r('app.media.ic_locked'), '交易对手/债务', '管理借款与往来', () => {
+            this.pathStack.pushPathByName('DebtManage', null);
+          })
+        }
+        ListItem() {
+          this.moreMenuRow($r('app.media.ic_settings'), '设置', '调整应用偏好', () => {
+            router.pushUrl({ url: 'pages/Settings' }).catch(() => {
+            });
+          })
+        }
       }
       .width('100%')
-      .height('100%')
-      .justifyContent(FlexAlign.Center)
-      .alignItems(HorizontalAlign.Center)
-
-      // 选中指示线（底部蓝色短横线）
-      if (this.selectedTab === tabIndex) {
-        Row()
-          .width(24)
-          .height(3)
-          .borderRadius(1.5)
-          .backgroundColor($r('app.color.primaryColor'))
-          .position({ x: '50%', y: 52 })
-          .translate({ x: -12 })
-      }
+      .layoutWeight(1)
+      .padding({ left: 12, right: 12, bottom: 12 })
+      .scrollBar(BarState.Auto)
     }
     .width('100%')
     .height('100%')
+    .backgroundColor($r('app.color.pageBackground'))
+  }
+
+  @Builder
+  moreMenuRow(icon: Resource, title: string, description: string, onClick: () => void) {
+    Row({ space: 14 }) {
+      Stack() {
+        Image(icon)
+          .width(24)
+          .height(24)
+          .fillColor($r('app.color.primaryColor'))
+      }
+      .width(44)
+      .height(44)
+      .borderRadius(14)
+      .backgroundColor($r('app.color.surfaceBrandSoft'))
+
+      Column({ space: 3 }) {
+        Text(title)
+          .fontSize(16)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.textPrimary'))
+        Text(description)
+          .fontSize(13)
+          .fontColor($r('app.color.textSecondary'))
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+      }
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Start)
+
+      Image($r('sys.media.ohos_ic_public_arrow_right'))
+        .width(18)
+        .height(18)
+        .fillColor($r('app.color.iconSecondary'))
+    }
+    .width('100%')
+    .height(68)
+    .padding({ left: 12, right: 12 })
+    .borderRadius(16)
+    .backgroundColor($r('app.color.cardBackgroundColor'))
+    .accessibilityText(title)
+    .accessibilityDescription(description)
+    .onClick(onClick)
   }
 
 
@@ -637,6 +781,7 @@ struct Index {
             grouping: this.grouping,
             selectedAccountId: this.selectedAccountId,
             showEquivalent: this.showEquivalent,
+            accountFlags: this.accountFlags,
             onReorder: (from: number, to: number) => {
               this.reorderAccounts(from, to);
             },
@@ -657,8 +802,11 @@ struct Index {
             onToggleExclude: (id: number) => {
               this.toggleExclude(id);
             },
-            onSetFlag: (id: number) => {
-              this.setAccountFlag(id);
+            onApplyFlag: (id: number, flagId: number) => {
+              this.applyAccountFlag(id, flagId);
+            },
+            onToggleDynamicExchangeRate: (id: number) => {
+              this.toggleDynamicExchangeRate(id);
             },
             onCreateAccount: () => {
               this.navigateToAccountEdit(-1);
@@ -754,7 +902,15 @@ struct Index {
   transactionsTab() {
     Stack() {
       Column() {
-        this.transactionHeader()
+        // 多选模式：顶部操作栏（对齐安卓 ActionMode：选中数量 + 全选/删除/标签/退出）
+        if (this.isSelectionMode) {
+          this.selectionActionBar()
+        } else {
+          this.transactionHeader()
+          if (this.transactionToolsExpanded) {
+            this.transactionToolsPanel()
+          }
+        }
         // 账户滑动选择器（对齐安卓 SecondaryScrollableTabRow：累计 + 各账户，可横向滑动）
         if (this.accounts.length > 1) {
           this.accountTabsRow()
@@ -782,6 +938,9 @@ struct Index {
                 this.toggleSelect(id);
               }
             },
+            onLongPressTransaction: (id: number) => {
+              this.enterSelectionMode(id);
+            },
             onMenuAction: (id: number, action: string) => {
               this.handleTransactionMenuAction(id, action);
             },
@@ -801,7 +960,7 @@ struct Index {
           Column()
             .width('100%')
             .height('100%')
-            .backgroundColor('#00000000')
+            .backgroundColor(Color.Transparent)
             .onClick(() => {
               this.fabExpanded = false;
             })
@@ -831,13 +990,13 @@ struct Index {
               Image($r('app.media.ic_locked'))
                 .width(24)
                 .height(24)
-                .fillColor('#61000000')
+                .fillColor($r('app.color.interactiveDisabled'))
             }
             .width(56)
             .height(56)
             .borderRadius(28)
             .justifyContent(FlexAlign.Center)
-            .backgroundColor('#E0E0E0')
+            .backgroundColor($r('app.color.surfaceSecondary'))
             .onClick(() => {
               promptAction.showToast({ message: $r('app.string.account_closed') });
             })
@@ -912,72 +1071,18 @@ struct Index {
         } else {
           // 筛选后模板列表（无匹配时显示空提示）
           if (this.filteredTemplates().length === 0) {
-            Column() {
-              Text('该筛选条件下暂无模板')
-                .fontSize(15)
-                .fontColor($r('app.color.textSecondary'))
-            }
+            EmptyState({
+              iconResource: $r('app.media.ic_filter_list'),
+              title: '没有符合条件的模板',
+              subtitle: '可以切换筛选条件查看其他模板'
+            })
             .width('100%')
             .layoutWeight(1)
-            .justifyContent(FlexAlign.Center)
-            .alignItems(HorizontalAlign.Center)
           } else {
-            List({ space: 0 }) {
+            List({ space: 8 }) {
               ForEach(this.filteredTemplates(), (tpl: Template) => {
               ListItem() {
-                Row() {
-                  // 左侧：模板图标（对齐安卓 Plan ImageView）
-                  Image($r('app.media.ic_tab_template'))
-                    .width(22)
-                    .height(22)
-                    .objectFit(ImageFit.Contain)
-                    .fillColor($r('app.color.textSecondary'))
-                    .opacity(0.8)
-
-                  // 账户颜色竖条（对齐安卓 colorAccount）
-                  Column()
-                    .width(4)
-                    .height('100%')
-                    .backgroundColor(this.templateAccountColor(tpl))
-                    .margin({ left: 8, right: 10 })
-                    .borderRadius(2)
-
-                  // 中间：标题（加粗，有周期追加后缀）+ 副标题（类别 · 备注 · 收款人）
-                  Column() {
-                    Text(tpl.title + (tpl.recurrence > 0 ? ` (${this.recurrenceLabel(tpl.recurrence)})` : ''))
-                      .fontSize(15)
-                      .fontWeight(FontWeight.Medium)
-                      .fontColor($r('app.color.textPrimary'))
-                      .maxLines(1)
-                      .textOverflow({ overflow: TextOverflow.Ellipsis })
-                    Text(this.templateSubtitle(tpl))
-                      .fontSize(12)
-                      .fontColor($r('app.color.textSecondary'))
-                      .maxLines(1)
-                      .textOverflow({ overflow: TextOverflow.Ellipsis })
-                  }
-                  .layoutWeight(1)
-                  .alignItems(HorizontalAlign.Start)
-                  .margin({ left: 12 })
-
-                  // 右侧：金额（收入绿/支出红/转账蓝，对齐安卓 Amount）
-                  Text(this.templateAmount(tpl))
-                    .fontSize(15)
-                    .fontWeight(FontWeight.Medium)
-                    .fontColor(this.templateAmountColor(tpl))
-                    .margin({ left: 8 })
-                }
-                .width('100%')
-                .height(60)
-                .padding({ left: 16, right: 16 })
-                .backgroundColor($r('app.color.cardBackgroundColor'))
-                .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
-                .onClick(() => {
-                  this.useTemplate(tpl);
-                })
-                .gesture(LongPressGesture().onAction(() => {
-                  this.showTemplateMenu(tpl);
-                }))
+                this.templateListItem(tpl)
               }
             }, (tpl: Template) => `tpl_${tpl.id}_${tpl.recurrence}_${tpl.advanceDays}_${tpl.autoExecute}_${tpl.amount}_${tpl.title}`)
           }
@@ -989,25 +1094,167 @@ struct Index {
       .width('100%')
       .height('100%')
 
-      // 新建模板 FAB
-      Stack() {
-        Text('+')
-          .fontSize(28)
-          .fontColor(Color.White)
-          .fontWeight(FontWeight.Bold)
+      Button() {
+        Image($r('app.media.ic_add'))
+          .width(24)
+          .height(24)
+          .fillColor(Color.White)
       }
-      .width(56)
-      .height(56)
-      .borderRadius(28)
-      .backgroundColor($r('app.color.primaryColor'))
-      .shadow({ radius: 8, color: '#40000000', offsetY: 4 })
-      .position({ x: '76%', y: '78%' })
-      .onClick(() => {
-        this.navigateToTemplateEdit(-1);
-      })
+        .type(ButtonType.Circle)
+        .width(56)
+        .height(56)
+        .backgroundColor($r('app.color.primaryColor'))
+        .stateEffect(true)
+        .shadow({ radius: 6, color: '#26000000', offsetY: 3 })
+        .accessibilityText('新建模板')
+        .position({ x: '76%', y: '78%' })
+        .onClick(() => {
+          this.navigateToTemplateEdit(-1);
+        })
     }
     .width('100%')
     .height('100%')
+  }
+
+  @Builder
+  templateListItem(tpl: Template) {
+    Column() {
+      Row() {
+        Image($r('app.media.ic_tab_template'))
+          .width(24)
+          .height(24)
+          .objectFit(ImageFit.Contain)
+          .fillColor($r('app.color.textSecondary'))
+          .opacity(0.8)
+        Column()
+          .width(4)
+          .height(44)
+          .backgroundColor(this.templateAccountColor(tpl))
+          .margin({ left: 8, right: 10 })
+          .borderRadius(2)
+        Column() {
+          Text(tpl.title + (tpl.recurrence > 0 ? ` (${this.recurrenceLabel(tpl.recurrence)})` : ''))
+            .fontSize(16)
+            .fontWeight(FontWeight.Bold)
+            .fontColor($r('app.color.textPrimary'))
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+          Text(this.templateSubtitle(tpl))
+            .fontSize(12)
+            .fontColor($r('app.color.textSecondary'))
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Start)
+        Text(this.templateAmount(tpl))
+          .fontSize(16)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(this.templateAmountColor(tpl))
+          .margin({ left: 8 })
+        Button() {
+          Image(this.expandedTemplateId === tpl.id ? $r('sys.media.ohos_ic_public_arrow_up') :
+            $r('sys.media.ohos_ic_public_more'))
+            .width(20)
+            .height(20)
+            .fillColor(this.expandedTemplateId === tpl.id ? $r('app.color.primaryColor') :
+              $r('app.color.iconSecondary'))
+        }
+        .type(ButtonType.Circle)
+        .width($r('app.float.native_touch_target'))
+        .height($r('app.float.native_touch_target'))
+        .margin({ left: 4 })
+        .backgroundColor(this.expandedTemplateId === tpl.id ?
+          $r('app.color.surfaceBrandSoft') : Color.Transparent)
+        .accessibilityText(this.expandedTemplateId === tpl.id ? '收起模板操作' : '展开模板操作')
+        .onClick(() => {
+          this.expandedTemplateId = InlineExpansionState.toggleExclusive(this.expandedTemplateId, tpl.id);
+        })
+      }
+      .width('100%')
+      .height(72)
+      .padding({ left: 12, right: 4 })
+      .onClick(() => {
+        this.useTemplate(tpl);
+      })
+      .gesture(LongPressGesture().onAction(() => {
+        this.expandedTemplateId = InlineExpansionState.toggleExclusive(this.expandedTemplateId, tpl.id);
+      }))
+
+      if (this.expandedTemplateId === tpl.id) {
+        Divider()
+          .color($r('app.color.dividerSubtle'))
+          .strokeWidth(0.5)
+          .margin({ left: 12, right: 12 })
+        this.templateActionsPanel(tpl)
+      }
+    }
+    .width('100%')
+    .margin({ left: 12, right: 12 })
+    .borderRadius($r('app.float.native_card_radius'))
+    .backgroundColor($r('app.color.surfacePrimary'))
+  }
+
+  /** 模板行就地操作面板：保留原菜单及其二级设置的全部能力。 */
+  @Builder
+  templateActionsPanel(tpl: Template) {
+    Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
+      this.templateInlineAction('编辑', () => {
+        this.expandedTemplateId = -1;
+        this.navigateToTemplateEdit(tpl.id);
+      })
+      if (tpl.recurrence > 0) {
+        this.templateInlineAction('生成计划', () => {
+          this.generatePlan(tpl);
+        })
+      }
+      this.templateInlineMenuAction(`周期：${this.recurrenceLabel(tpl.recurrence)}`, this.recurrenceMenu(tpl))
+      this.templateInlineAction(tpl.autoExecute ? '自动执行：开' : '自动执行：关', () => {
+        this.toggleAutoExecute(tpl);
+      })
+      this.templateInlineAction('下次执行日期', () => {
+        this.pickPlanStartDate(tpl);
+      })
+      this.templateInlineMenuAction(`提前：${tpl.advanceDays} 天`, this.advanceDaysMenu(tpl))
+      this.templateInlineAction('删除', () => {
+        this.expandedTemplateId = -1;
+        this.confirmDeleteTemplate(tpl);
+      }, true)
+    }
+    .width('100%')
+    .padding({ left: 8, right: 8, top: 8, bottom: 2 })
+  }
+
+  @Builder
+  templateInlineAction(label: string, onClick: () => void, destructive: boolean = false) {
+    Button(label)
+      .width('32%')
+      .height($r('app.float.native_touch_target'))
+      .margin({ bottom: 8 })
+      .padding({ left: 6, right: 6 })
+      .fontSize(13)
+      .fontColor(destructive ? $r('app.color.colorExpense') : $r('app.color.textPrimary'))
+      .backgroundColor(destructive ? $r('app.color.surfaceExpenseSoft') : $r('app.color.surfaceSecondary'))
+      .borderRadius(14)
+      .stateEffect(true)
+      .accessibilityText(label)
+      .onClick(onClick)
+  }
+
+  @Builder
+  templateInlineMenuAction(label: string, menu: Array<MenuElement>) {
+    Button(label)
+      .width('32%')
+      .height($r('app.float.native_touch_target'))
+      .margin({ bottom: 8 })
+      .padding({ left: 6, right: 6 })
+      .fontSize(13)
+      .fontColor($r('app.color.textPrimary'))
+      .backgroundColor($r('app.color.surfaceSecondary'))
+      .borderRadius(14)
+      .stateEffect(true)
+      .accessibilityText(label)
+      .bindMenu(menu)
   }
 
   private templateAmount(tpl: Template): string {
@@ -1060,50 +1307,6 @@ struct Index {
   }
 
   /**
-   * 模板行长按操作菜单（对齐安卓 contextual action bar：生成计划/设置周期/删除）
-   */
-  private showTemplateMenu(tpl: Template): void {
-    const sheets: SheetInfo[] = [];
-    sheets.push({
-      title: '编辑模板',
-      action: () => {
-        this.navigateToTemplateEdit(tpl.id);
-      }
-    });
-    if (tpl.recurrence > 0) {
-      sheets.push({
-        title: '生成计划交易',
-        action: () => {
-          this.generatePlan(tpl);
-        }
-      });
-    }
-    sheets.push({
-      title: '设置周期',
-      action: () => {
-        this.setRecurrence(tpl);
-      }
-    });
-    sheets.push({
-      title: '删除模板',
-      action: () => {
-        this.confirmDeleteTemplate(tpl);
-      }
-    });
-    const options: ActionSheetOptions = {
-      title: tpl.title,
-      message: '模板操作',
-      confirm: {
-        value: '取消',
-        action: () => {
-        }
-      },
-      sheets: sheets
-    };
-    this.getUIContext().showActionSheet(options);
-  }
-
-  /**
    * 删除模板二次确认（对齐安卓 warning_delete_template）
    */
   private confirmDeleteTemplate(tpl: Template): void {
@@ -1150,10 +1353,17 @@ struct Index {
    * 用于交易：模板实例化为交易并进入编辑
    */
   private async useTemplate(tpl: Template): Promise<void> {
+    // 对齐安卓模板业务流程（TemplatesList）：按 default_action 分发
+    // SAVE：点击直接创建交易；EDIT：打开编辑页预填模板数据（拆分/外汇转账也走编辑）
+    if (tpl.defaultAction === 'EDIT' || tpl.isSplit()) {
+      router.pushUrl({ url: 'pages/ExpenseEdit', params: { fromTemplateId: tpl.id } }).catch(() => {
+      });
+      return;
+    }
     const txId = await this.repository.instantiateTemplate(tpl);
     if (txId > 0) {
       promptAction.showToast({ message: $r('app.string.toast_tx_generated') });
-      this.navigateToExpenseEdit(txId, tpl.accountId);
+      await this.loadData();
     }
   }
 
@@ -1206,32 +1416,19 @@ struct Index {
     await this.loadData();
   }
 
-  /**
-   * 设置模板周期（弹出选择）
-   */
-  private setRecurrence(tpl: Template): void {
-    const options: ActionSheetOptions = {
-      title: '设置周期',
-      message: `${tpl.title} 的重复规则`,
-      confirm: {
-        value: '取消',
-        action: () => {
-        }
-      },
-      sheets: [
-        { title: '不重复', action: () => this.applyRecurrence(tpl, 0) },
-        { title: '仅一次', action: () => this.applyRecurrence(tpl, 1) },
-        { title: '每天', action: () => this.applyRecurrence(tpl, 2) },
-        { title: '每周', action: () => this.applyRecurrence(tpl, 3) },
-        { title: '每月', action: () => this.applyRecurrence(tpl, 4) },
-        { title: '每月最后一天', action: () => this.applyRecurrence(tpl, 5) },
-        { title: '每年', action: () => this.applyRecurrence(tpl, 6) },
-        { title: '设置下次执行日期', action: () => this.pickPlanStartDate(tpl) },
-        { title: tpl.autoExecute ? '自动执行：开（点击关闭）' : '自动执行：关（点击开启）', action: () => this.toggleAutoExecute(tpl) },
-        { title: `提前执行：${tpl.advanceDays} 天`, action: () => this.setAdvanceDays(tpl) }
-      ]
-    };
-    this.getUIContext().showActionSheet(options);
+  /** 周期是短单选项，使用按钮锚定菜单。 */
+  private recurrenceMenu(tpl: Template): Array<MenuElement> {
+    const labels: string[] = ['不重复', '仅一次', '每天', '每周', '每月', '每月最后一天', '每年'];
+    const menu: Array<MenuElement> = [];
+    for (let i = 0; i < labels.length; i++) {
+      const recurrence = i;
+      const label = labels[i];
+      menu.push({
+        value: (tpl.recurrence === recurrence ? '✓ ' : '') + label,
+        action: () => this.applyRecurrence(tpl, recurrence)
+      } as MenuElement);
+    }
+    return menu;
   }
 
   /**
@@ -1243,27 +1440,19 @@ struct Index {
     await this.loadData();
   }
 
-  /**
-   * 设置提前执行天数（0-30）
-   */
-  private setAdvanceDays(tpl: Template): void {
-    const options: ActionSheetOptions = {
-      title: '提前执行天数',
-      message: `当前：${tpl.advanceDays} 天（0-30）`,
-      confirm: {
-        value: '取消',
-        action: () => {
-        }
-      },
-      sheets: [
-        { title: '0 天（不提前）', action: () => this.applyAdvanceDays(tpl, 0) },
-        { title: '3 天', action: () => this.applyAdvanceDays(tpl, 3) },
-        { title: '7 天', action: () => this.applyAdvanceDays(tpl, 7) },
-        { title: '14 天', action: () => this.applyAdvanceDays(tpl, 14) },
-        { title: '30 天', action: () => this.applyAdvanceDays(tpl, 30) }
-      ]
-    };
-    this.getUIContext().showActionSheet(options);
+  /** 提前天数是短单选项，使用按钮锚定菜单。 */
+  private advanceDaysMenu(tpl: Template): Array<MenuElement> {
+    const days: number[] = [0, 3, 7, 14, 30];
+    const menu: Array<MenuElement> = [];
+    for (let i = 0; i < days.length; i++) {
+      const day = days[i];
+      const label = day === 0 ? '0 天（不提前）' : `${day} 天`;
+      menu.push({
+        value: (tpl.advanceDays === day ? '✓ ' : '') + label,
+        action: () => this.applyAdvanceDays(tpl, day)
+      } as MenuElement);
+    }
+    return menu;
   }
 
   private async applyAdvanceDays(tpl: Template, days: number): Promise<void> {
@@ -1302,83 +1491,86 @@ struct Index {
   }
 
   @Builder
-  moreTab() {
-    Column() {
-      this.headerBar('更多')
-      this.moreMenu()
+
+  rootIconAction(icon: Resource, label: string, onClick: () => void) {
+    Button() {
+      Image(icon)
+        .width(22)
+        .height(22)
+        .fillColor($r('app.color.iconSecondary'))
     }
-    .width('100%')
-    .height('100%')
+    .type(ButtonType.Circle)
+    .width(48)
+    .height(48)
+    .backgroundColor(Color.Transparent)
+    .stateEffect(true)
+    .accessibilityText(label)
+    .onClick(onClick)
   }
 
   @Builder
+  rootMenuAction(icon: Resource, label: string, menu: Array<MenuElement>) {
+    Button() {
+      Image(icon)
+        .width(22)
+        .height(22)
+        .fillColor($r('app.color.iconSecondary'))
+    }
+    .type(ButtonType.Circle)
+    .width(48)
+    .height(48)
+    .backgroundColor(Color.Transparent)
+    .stateEffect(true)
+    .accessibilityText(label)
+    .bindMenu(menu)
+  }
+
+  @Builder
+
   headerBar(title: string) {
     Row() {
       // 账户标题 + 资产负债表切换箭头（对齐安卓：点击弹出下拉菜单，账户/资产负债表 同页切换）
       if (this.selectedTab === 0) {
         Row() {
           Text(this.accountView === 0 ? '账户' : '资产负债表')
-            .fontSize(18)
-            .fontWeight(FontWeight.Medium)
+            .fontSize(20)
+            .fontWeight(FontWeight.Bold)
             .fontColor($r('app.color.textPrimary'))
           Image($r('sys.media.ohos_ic_public_arrow_down'))
             .width(16)
             .height(16)
             .margin({ left: 4 })
         }
+        .height(48)
         .bindMenu(this.accountViewMenu())
       } else {
         Text(title)
-          .fontSize(18)
-          .fontWeight(FontWeight.Medium)
+          .fontSize(20)
+          .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.textPrimary'))
       }
       Blank()
       // 模板页右上角筛选（对齐安卓模板与计划筛选，就近展开非弹窗）
       if (this.selectedTab === 2) {
-        Image($r('app.media.ic_filter_list'))
-          .width(22)
-          .height(22)
-          .margin({ right: 8 })
-          .fillColor($r('app.color.textSecondary'))
-          .bindMenu(this.templateFilterMenu())
+        this.rootMenuAction($r('app.media.ic_filter_list'), '筛选模板', this.templateFilterMenu())
       }
       // 账户列表视图右上角操作（对齐安卓：ViewOptionsMenu Tune + ManageEntitiesMenu DataObject）
       if (this.selectedTab === 0 && this.accountView === 0) {
         // 选项（Tune）：分组 + 排序方式（对齐安卓 TooltipIconMenu 就近展开）
-        Image($r('app.media.ic_tune'))
-          .width(22)
-          .height(22)
-          .margin({ right: 16 })
-          .fillColor($r('app.color.textSecondary'))
-          .bindMenu(this.accountViewOptionsMenu())
-        // 数据（DataObject）：管理账户类型/标记
-        Image($r('app.media.ic_data_object'))
-          .width(22)
-          .height(22)
-          .fillColor($r('app.color.textSecondary'))
-          .bindMenu(this.manageEntitiesMenu())
+        this.rootMenuAction($r('app.media.ic_tune'), '账户显示选项', this.accountViewOptionsMenu())
+        this.rootMenuAction($r('app.media.ic_data_object'), '账户数据管理', this.manageEntitiesMenu())
       }
       // 资产负债表视图右上角操作（对齐安卓 BalanceSheetOptions：Print 图标 + Tune 下拉菜单，与标题同高）
       if (this.selectedTab === 0 && this.accountView === 1) {
-        Image($r('app.media.ic_print'))
-          .width(22)
-          .height(22)
-          .margin({ right: 16 })
-          .fillColor($r('app.color.textSecondary'))
-          .onClick(() => {
-            this.bsPrintTick++;
-          })
-        Image($r('app.media.ic_tune'))
-          .width(22)
-          .height(22)
-          .fillColor($r('app.color.textSecondary'))
-          .bindMenu(this.balanceSheetOptionsMenu())
+        this.rootIconAction($r('app.media.ic_print'), '打印资产负债表', () => {
+          this.bsPrintTick++;
+        })
+        this.rootMenuAction($r('app.media.ic_tune'), '资产负债表选项', this.balanceSheetOptionsMenu())
       }
     }
     .width('100%')
     .height(56)
-    .padding({ left: 16, right: 16 })
+    .padding({ left: 16, right: 4 })
     .backgroundColor($r('app.color.pageBackground'))
   }
 
@@ -1479,43 +1671,6 @@ struct Index {
     return sorted;
   }
 
-  private showAccountOptions(): void {
-    const options: ActionSheetOptions = {
-      title: '账户选项',
-      message: '账户管理操作',
-      confirm: {
-        value: '取消',
-        action: () => {
-        }
-      },
-      sheets: [
-        {
-          title: '新建账户',
-          action: () => this.navigateToAccountEdit(-1)
-        },
-        {
-          title: '账户类型',
-          action: () => this.showAccountTypes()
-        },
-        {
-          title: '账户标记',
-          action: () => this.showAccountFlagsManage()
-        },
-        {
-          title: '显示等值',
-          action: () => this.toggleShowEquivalent()
-        },
-        {
-          title: '资产负债表',
-          action: () => {
-            this.accountView = 1;
-          }
-        }
-      ]
-    };
-    this.getUIContext().showActionSheet(options);
-  }
-
   private showAccountTypes(): void {
     promptAction.showToast({ message: '账户类型管理（开发中）' });
   }
@@ -1533,6 +1688,127 @@ struct Index {
   private navigateToBalanceSheet(): void {
     router.pushUrl({ url: 'pages/BalanceSheet' }).catch(() => {
     });
+  }
+
+  /**
+   * 帮助对话框（对齐安卓 Help 功能入口）
+   */
+  private showHelpDialog(): void {
+    this.getUIContext().showAlertDialog({
+      title: '帮助',
+      message: '开支助手使用说明：\n\n' +
+        '· 账户 Tab：管理账户、查看资产负债表\n' +
+        '· 交易 Tab：记录支出/收入/转账，长按交易可多选批量操作\n' +
+        '· 模板 Tab：保存常用交易为模板，支持定期计划\n' +
+        '· 更多 Tab：管理类别、付款方式、标签、预算、债务等\n\n' +
+        '需要帮助时，可在设置中查看版本信息。',
+      primaryButton: {
+        value: '知道了',
+        action: () => {
+        }
+      }
+    });
+  }
+
+  /**
+   * 关于对话框（对齐安卓 VersionDialogFragment）
+   */
+  private showAboutDialog(): void {
+    this.getUIContext().showAlertDialog({
+      title: '关于',
+      message: '开支助手\n版本 1.0.0\n\n' +
+        '基于 MyExpenses 迁移至 HarmonyOS ArkUI。\n' +
+        '功能与界面尽量与 Android 原版保持一致。',
+      primaryButton: {
+        value: '知道了',
+        action: () => {
+        }
+      }
+    });
+  }
+
+  /**
+   * 多选模式顶部操作栏（对齐安卓 ActionMode：选中数量 + 全选 + 删除 + 标签 + 退出）
+   */
+  @Builder
+  selectionActionBar() {
+    Row() {
+      // 关闭选择模式
+      Button('✕')
+        .width($r('app.float.native_touch_target'))
+        .height($r('app.float.native_touch_target'))
+        .padding(0)
+        .backgroundColor(Color.Transparent)
+        .fontSize(18)
+        .fontColor($r('app.color.textSecondary'))
+        .stateEffect(true)
+        .accessibilityText('退出多选模式')
+        .onClick(() => {
+          this.exitSelectionMode();
+        })
+      Text(`已选 ${this.selectedTransactionIds.length} 项`)
+        .fontSize(15)
+        .fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.textPrimary'))
+        .layoutWeight(1)
+      // 全选（对齐安卓 SELECT_ALL_COMMAND）
+      Button('全选')
+        .height($r('app.float.native_touch_target'))
+        .padding({ left: 10, right: 10 })
+        .backgroundColor(Color.Transparent)
+        .fontSize(14)
+        .fontColor($r('app.color.primaryColor'))
+        .stateEffect(true)
+        .accessibilityText('全选可见交易')
+        .onClick(() => {
+          this.selectAllVisible();
+        })
+      // 打标签（对齐安卓 MAP_TAG_COMMAND）：短单选项就近展开
+      this.batchTagButton()
+      // 删除（对齐安卓 DELETE_COMMAND）
+      Button('删除')
+        .height($r('app.float.native_touch_target'))
+        .padding({ left: 10, right: 10 })
+        .backgroundColor($r('app.color.surfaceExpenseSoft'))
+        .fontSize(14)
+        .fontColor($r('app.color.colorExpense'))
+        .stateEffect(true)
+        .accessibilityText('删除所选交易')
+        .onClick(() => {
+          this.deleteSelected();
+        })
+    }
+    .width('100%')
+    .height(56)
+    .padding({ left: 4, right: 8 })
+    .backgroundColor($r('app.color.pageBackground'))
+  }
+
+  @Builder
+  batchTagButton() {
+    if (this.tags.length > 0) {
+      Button('标签')
+        .height($r('app.float.native_touch_target'))
+        .padding({ left: 10, right: 10 })
+        .backgroundColor(Color.Transparent)
+        .fontSize(14)
+        .fontColor($r('app.color.primaryColor'))
+        .stateEffect(true)
+        .accessibilityText('为所选交易添加标签')
+        .bindMenu(this.batchTagMenu())
+    } else {
+      Button('标签')
+        .height($r('app.float.native_touch_target'))
+        .padding({ left: 10, right: 10 })
+        .backgroundColor(Color.Transparent)
+        .fontSize(14)
+        .fontColor($r('app.color.textTertiary'))
+        .stateEffect(true)
+        .accessibilityText('暂无可用标签')
+        .onClick(() => {
+          promptAction.showToast({ message: '暂无可用标签，请先在标签管理中创建' });
+        })
+    }
   }
 
   @Builder
@@ -1555,11 +1831,8 @@ struct Index {
           Image($r('sys.media.ohos_ic_public_arrow_down'))
             .width(14)
             .height(14)
-            .opacity(0.4)
+            .fillColor($r('app.color.iconSecondary'))
             .margin({ left: 4 })
-            .onClick(() => {
-              this.showAccountDetail();
-            })
         }
         Text(`当前余额 ${this.balanceText()}`)
           .fontSize(13)
@@ -1567,37 +1840,64 @@ struct Index {
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
+      .accessibilityText('查看账户余额详情')
+      .onClick(() => {
+        this.showAccountDetail();
+      })
 
-      // 搜索（对齐安卓 Search）
-      Image($r('sys.media.ohos_ic_public_search_filled'))
-        .width(22)
-        .height(22)
-        .margin({ right: 12 })
+      Button() {
+        Image($r('sys.media.ohos_ic_public_search_filled'))
+          .width(22)
+          .height(22)
+          .fillColor($r('app.color.iconSecondary'))
+      }
+        .type(ButtonType.Circle)
+        .width(48)
+        .height(48)
+        .backgroundColor(Color.Transparent)
+        .stateEffect(true)
+        .accessibilityText('搜索交易')
         .onClick(() => {
           this.navigateToSearch();
         })
 
-
-      // AI 助手
-      Image($r('sys.media.ohos_ic_public_scan'))
-        .width(22)
-        .height(22)
-        .margin({ right: 8 })
+      Button('AI')
+        .width(64)
+        .height($r('app.float.native_touch_target'))
+        .padding(0)
+        .fontSize(14)
+        .fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.primaryColor'))
+        .backgroundColor($r('app.color.surfaceBrandSoft'))
+        .borderRadius(24)
+        .stateEffect(true)
+        .accessibilityText('AI 记账与洞察')
+        .accessibilityDescription('打开 AI 助手，进行智能记账与收支分析')
         .onClick(() => {
           this.navigateToAi();
         })
 
-      // 更多操作图标（对齐安卓 Actions 菜单：排序/分组/导出）
-      Image($r('sys.media.ohos_ic_public_more'))
-        .width(22)
-        .height(22)
+      Button() {
+        Image(this.transactionToolsExpanded ? $r('sys.media.ohos_ic_public_arrow_up') :
+          $r('sys.media.ohos_ic_public_more'))
+          .width(22)
+          .height(22)
+          .fillColor(this.transactionToolsExpanded ? $r('app.color.primaryColor') :
+            $r('app.color.iconSecondary'))
+      }
+        .type(ButtonType.Circle)
+        .width(48)
+        .height(48)
+        .backgroundColor(this.transactionToolsExpanded ? $r('app.color.surfaceBrandSoft') : Color.Transparent)
+        .stateEffect(true)
+        .accessibilityText(this.transactionToolsExpanded ? '收起交易操作' : '展开交易操作')
         .onClick(() => {
-          this.showTransactionActions();
+          this.transactionToolsExpanded = InlineExpansionState.toggle(this.transactionToolsExpanded);
         })
     }
     .width('100%')
     .height(56)
-    .padding({ left: 16, right: 16 })
+    .padding({ left: 16, right: 4 })
     .backgroundColor($r('app.color.pageBackground'))
   }
 
@@ -1613,12 +1913,18 @@ struct Index {
       Row() {
         // 账户过滤器图标（对齐安卓 AccountFilterMenu）：聚合视图或过滤激活时显示，点击弹出账户类型筛选
         if (this.isAggregate() || this.activeFilterType >= 0) {
-          Image($r('app.media.ic_filter'))
-            .width(20)
-            .height(20)
-            .fillColor(this.activeFilterType >= 0 ? $r('app.color.primaryColor') : $r('app.color.textSecondary'))
+          Button() {
+            Image($r('app.media.ic_filter'))
+              .width(20)
+              .height(20)
+              .fillColor(this.activeFilterType >= 0 ? $r('app.color.primaryColor') : $r('app.color.iconSecondary'))
+          }
+            .type(ButtonType.Circle)
+            .width($r('app.float.native_touch_target'))
+            .height($r('app.float.native_touch_target'))
+            .backgroundColor(this.activeFilterType >= 0 ? $r('app.color.surfaceBrandSoft') : Color.Transparent)
+            .accessibilityText('筛选账户类型')
             .bindMenu(this.accountFilterMenuItems())
-            .margin({ left: 4, right: 4 })
         }
         if (this.activeFilterType >= 0) {
           // 过滤激活：各该类型账户 + 右侧末尾聚合 tab（账户类型名）
@@ -1636,12 +1942,12 @@ struct Index {
           }, (acc: Account) => `tab_${acc.id}`)
         }
       }
-      .padding({ left: 8, right: 8 })
+      .padding({ left: 12, right: 12 })
     }
     .scrollable(ScrollDirection.Horizontal)
     .scrollBar(BarState.Off)
     .width('100%')
-    .height(44)
+    .height(52)
     .backgroundColor($r('app.color.pageBackground'))
   }
 
@@ -1660,22 +1966,26 @@ struct Index {
    */
   @Builder
   accountTabItem(id: number, label: string, indicatorColor: ResourceColor) {
-    Column() {
+    Row() {
+      if (this.selectedAccountId === id) {
+        Circle()
+          .width(8)
+          .height(8)
+          .fill(indicatorColor)
+          .margin({ right: 6 })
+      }
       Text(label)
         .fontSize(14)
         .fontColor(this.selectedAccountId === id ? $r('app.color.primaryColor') : $r('app.color.textSecondary'))
         .fontWeight(this.selectedAccountId === id ? FontWeight.Medium : FontWeight.Normal)
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
-        .padding({ left: 8, right: 8 })
-      // 底部指示线：选中时显示账户色，否则透明占位保持高度一致
-      Divider()
-        .width(36)
-        .strokeWidth(2)
-        .color(this.selectedAccountId === id ? indicatorColor : Color.Transparent)
-        .margin({ top: 3 })
     }
-    .height(44)
+    .height($r('app.float.native_touch_target'))
+    .padding({ left: 14, right: 14 })
+    .margin({ right: 8 })
+    .borderRadius(24)
+    .backgroundColor(this.selectedAccountId === id ? $r('app.color.surfaceBrandSoft') : $r('app.color.surfaceSecondary'))
     .justifyContent(FlexAlign.Center)
     .onClick(() => {
       this.selectTransactionAccount(id);
@@ -1704,37 +2014,64 @@ struct Index {
   }
 
   /**
-   * 交易页更多操作菜单（对齐安卓 Actions：排序/分组/导出）
+   * 交易页就地展开工具。大块页面操作不使用 ActionSheet，
+   * 保留 Android 原有 Actions 的全部六个回调。
    */
-  private showTransactionActions(): void {
-    const sheets: Array<SheetInfo> = [];
-    sheets.push({
-      title: `分组：${this.groupingLabel()}`,
-      action: () => this.cycleGrouping()
-    } as SheetInfo);
-    sheets.push({
-      title: '排序（日期）',
-      action: () => this.cycleSortOrder()
-    } as SheetInfo);
-    sheets.push({
-      title: '导出 CSV',
-      action: () => this.exportCsv()
-    } as SheetInfo);
-    sheets.push({
-      title: '筛选',
-      action: () => this.navigateToSearch()
-    } as SheetInfo);
-    const options: ActionSheetOptions = {
-      title: '交易操作',
-      message: '排序/分组/导出/筛选',
-      confirm: {
-        value: '取消',
-        action: () => {
-        }
-      },
-      sheets: sheets
-    };
-    this.getUIContext().showActionSheet(options);
+  @Builder
+  transactionToolsPanel() {
+    Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
+      this.transactionToolAction($r('app.media.ic_data_object'), `分组：${this.groupingLabel()}`, () => {
+        this.cycleGrouping();
+      })
+      this.transactionToolAction($r('app.media.ic_date'), '排序（日期）', () => {
+        this.cycleSortOrder();
+      })
+      this.transactionToolAction($r('app.media.ic_chart'), '分布图', () => {
+        this.navigateToDistribution();
+      })
+      this.transactionToolAction($r('app.media.ic_status'), '历史记录', () => {
+        this.navigateToHistory();
+      })
+      this.transactionToolAction($r('app.media.ic_attachment'), '导出 CSV', () => {
+        this.exportCsv();
+      })
+      this.transactionToolAction($r('app.media.ic_filter'), '筛选', () => {
+        this.navigateToSearch();
+      })
+    }
+    .width('100%')
+    .padding({ left: 12, right: 12, top: 8, bottom: 4 })
+    .backgroundColor($r('app.color.pageBackground'))
+  }
+
+  @Builder
+  transactionToolAction(icon: Resource, label: string, onClick: () => void) {
+    Button() {
+      Row({ space: 8 }) {
+        Image(icon)
+          .width(20)
+          .height(20)
+          .fillColor($r('app.color.primaryColor'))
+        Text(label)
+          .fontSize(13)
+          .fontColor($r('app.color.textPrimary'))
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+      }
+      .justifyContent(FlexAlign.Center)
+    }
+    .width('32%')
+    .height($r('app.float.native_touch_target'))
+    .margin({ bottom: 8 })
+    .padding({ left: 6, right: 6 })
+    .borderRadius(14)
+    .backgroundColor($r('app.color.surfaceSecondary'))
+    .stateEffect(true)
+    .accessibilityText(label)
+    .onClick(() => {
+      this.transactionToolsExpanded = false;
+      onClick();
+    })
   }
 
   private cycleSortOrder(): void {
@@ -1838,8 +2175,10 @@ struct Index {
       .margin({ top: 8 })
     }
     .width('100%')
-    .padding({ left: 16, right: 16, top: 12, bottom: 12 })
-    .backgroundColor($r('app.color.summaryCardBackground'))
+    .padding({ left: 16, right: 16, top: 14, bottom: 14 })
+    .margin({ left: 12, right: 12, bottom: 8 })
+    .borderRadius($r('app.float.native_emphasis_radius'))
+    .backgroundColor($r('app.color.surfacePrimary'))
   }
 
   @Builder
@@ -1853,87 +2192,6 @@ struct Index {
     .height('100%')
   }
 
-  @Builder
-  moreMenu() {
-    List({ space: 0 }) {
-      ListItem() {
-        this.menuRow('AI 助手', $r('app.media.ic_ai_robot'), () => {
-          this.navigateToAi();
-        })
-      }
-      ListItem() {
-        this.menuRow('类别', $r('app.media.ic_category'), () => {
-          router.pushUrl({ url: 'pages/CategoryManage' }).catch(() => {
-          });
-        })
-      }
-      ListItem() {
-        this.menuRow('付款方法', $r('app.media.ic_method'), () => {
-          router.pushUrl({ url: 'pages/MethodManage' }).catch(() => {
-          });
-        })
-      }
-      ListItem() {
-        this.menuRow('标签', $r('app.media.ic_tag'), () => {
-          router.pushUrl({ url: 'pages/TagManage' }).catch(() => {
-          });
-        })
-      }
-      ListItem() {
-        this.menuRow('资产负债表', $r('app.media.ic_balance'), () => {
-          router.pushUrl({ url: 'pages/BalanceSheet' }).catch(() => {
-          });
-        })
-      }
-      ListItem() {
-        this.menuRow('预算编制', $r('app.media.ic_category'), () => {
-          // P0-3：已迁移 NavDestination 的页面走 Navigation 栈
-          this.pathStack.pushPathByName('BudgetManage', null);
-        })
-      }
-      ListItem() {
-        this.menuRow('债务', $r('app.media.ic_locked'), () => {
-          // P0-3：已迁移 NavDestination 的页面走 Navigation 栈
-          this.pathStack.pushPathByName('DebtManage', null);
-        })
-      }
-      ListItem() {
-        this.menuRow('设置', $r('app.media.ic_settings'), () => {
-          router.pushUrl({ url: 'pages/Settings' }).catch(() => {
-          });
-        })
-      }
-    }
-    .width('100%')
-    .height('100%')
-  }
-
-  @Builder
-  menuRow(label: string, icon: Resource, onClick: () => void) {
-    Row() {
-      Image(icon)
-        .width(22)
-        .height(22)
-        .margin({ right: 12 })
-        .fillColor($r('app.color.textSecondary'))
-      Text(label)
-        .fontSize(15)
-        .fontColor($r('app.color.textPrimary'))
-        .layoutWeight(1)
-      Image($r('sys.media.ohos_ic_public_arrow_right'))
-        .width(16)
-        .height(16)
-        .opacity(0.4)
-    }
-    .width('100%')
-    .height(56)
-    .padding({ left: 16, right: 16 })
-    .backgroundColor($r('app.color.cardBackgroundColor'))
-    .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
-    .onClick(() => {
-      onClick();
-    })
-  }
 
   private balanceText(): string {
     if (this.isAggregate()) {
@@ -2151,6 +2409,119 @@ struct Index {
     }
   }
 
+  /**
+   * 长按进入多选模式并选中该项（对齐安卓 startMyActionMode）
+   */
+  private enterSelectionMode(id: number): void {
+    if (this.isSelectionMode) {
+      this.toggleSelect(id);
+      return;
+    }
+    this.isSelectionMode = true;
+    if (this.selectedTransactionIds.indexOf(id) < 0) {
+      this.selectedTransactionIds = [...this.selectedTransactionIds, id];
+    }
+  }
+
+  /** 退出多选模式（对齐安卓 finishActionMode） */
+  private exitSelectionMode(): void {
+    this.isSelectionMode = false;
+    this.selectedTransactionIds = [];
+  }
+
+  /** 全选当前可见交易 */
+  private selectAllVisible(): void {
+    const visible = this.currentTransactions;
+    if (visible.length === 0) {
+      return;
+    }
+    const all = visible.map((t: Transaction) => t.id);
+    // 若已全选则取消全选，否则全选
+    const allSelected = all.every((id: number) => this.selectedTransactionIds.indexOf(id) >= 0);
+    this.selectedTransactionIds = allSelected ? [] : all;
+  }
+
+  /** 批量删除选中交易（对齐安卓 DELETE_COMMAND） */
+  private async deleteSelected(): Promise<void> {
+    const ids = [...this.selectedTransactionIds];
+    if (ids.length === 0) {
+      return;
+    }
+    this.getUIContext().showAlertDialog({
+      title: '批量删除',
+      message: `确定要删除选中的 ${ids.length} 笔交易吗？此操作不可恢复。`,
+      primaryButton: {
+        value: '取消',
+        action: () => {
+        }
+      },
+      secondaryButton: {
+        value: '删除',
+        fontColor: $r('app.color.colorExpense'),
+        action: () => {
+          this.doDeleteSelected(ids);
+        }
+      }
+    });
+  }
+
+  private async doDeleteSelected(ids: number[]): Promise<void> {
+    try {
+      // 逐个处理拆分交易，其余批量删除
+      for (const id of ids) {
+        const tx = this.currentTransactions.find((t: Transaction) => t.id === id);
+        if (tx && tx.isSplit()) {
+          await this.repository.deleteSplitTransaction(id);
+        } else {
+          await this.repository.deleteTransaction(id);
+        }
+      }
+      promptAction.showToast({ message: `已删除 ${ids.length} 笔交易` });
+      this.exitSelectionMode();
+      await this.refreshTransactions(this.selectedAccountId);
+      await this.loadData();
+    } catch (e) {
+      console.error('批量删除失败: ' + JSON.stringify(e));
+      promptAction.showToast({ message: '批量删除失败' });
+    }
+  }
+
+  /** 批量标签锚定菜单：选中项后再执行写入，避免 ActionSheet 异步返回竞态。 */
+  private batchTagMenu(): Array<MenuElement> {
+    const menu: Array<MenuElement> = [];
+    for (let tag of this.tags) {
+      menu.push({
+        value: tag.label,
+        action: () => this.applyBatchTag(tag)
+      } as MenuElement);
+    }
+    return menu;
+  }
+
+  private async applyBatchTag(tag: Tag): Promise<void> {
+    if (this.selectedTransactionIds.length === 0) {
+      return;
+    }
+    try {
+      for (const id of this.selectedTransactionIds) {
+        const tx = this.currentTransactions.find((t: Transaction) => t.id === id);
+        if (!tx) {
+          continue;
+        }
+        const tagIds = tx.tagIds.indexOf(tag.id) >= 0 ? tx.tagIds : [...tx.tagIds, tag.id];
+        tx.tagIds = tagIds;
+        await this.repository.updateTransaction(tx);
+      }
+      promptAction.showToast({ message: `已为 ${this.selectedTransactionIds.length} 笔交易添加标签` });
+      this.exitSelectionMode();
+      await this.refreshTransactions(this.selectedAccountId);
+      await this.loadData();
+    } catch (e) {
+      console.error('批量打标签失败: ' + JSON.stringify(e));
+      promptAction.showToast({ message: '批量打标签失败' });
+    }
+  }
+
   private async deleteAccount(id: number): Promise<void> {
     await this.repository.deleteAccount(id);
     if (this.selectedAccountId === id) {
@@ -2210,37 +2581,22 @@ struct Index {
     }
   }
 
-  /**
-   * 设置账户标记（对齐安卓 Flag 菜单）
-   */
-  private async setAccountFlag(id: number): Promise<void> {
-    const flags = await this.repository.getAccountFlags();
-    if (flags.length === 0) {
-      promptAction.showToast({ message: '暂无可用标记' });
-      return;
-    }
-    const sheets: Array<SheetInfo> = [];
-    for (let f of flags) {
-      sheets.push({
-        title: f.label,
-        action: () => this.applyAccountFlag(id, f.id)
-      } as SheetInfo);
-    }
-    const options: ActionSheetOptions = {
-      title: '设置账户标记',
-      message: '选择账户标记',
-      confirm: {
-        value: '取消',
-        action: () => {
-        }
-      },
-      sheets: sheets
-    };
-    this.getUIContext().showActionSheet(options);
-  }
-
   private async applyAccountFlag(id: number, flagId: number): Promise<void> {
     await this.repository.setAccountFlag(id, flagId);
+    await this.loadData();
+  }
+
+  /**
+   * 切换账户动态汇率（对齐安卓 DYNAMIC_EXCHANGE_RATE）
+   */
+  private async toggleDynamicExchangeRate(id: number): Promise<void> {
+    const acc = this.accounts.find((a: Account) => a.id === id);
+    if (!acc) {
+      return;
+    }
+    acc.dynamic = !acc.dynamic;
+    this.accounts = [...this.accounts];
+    await this.repository.updateAccount(acc);
     await this.loadData();
   }
 
