@@ -16,6 +16,7 @@ import { BudgetManage } from './BudgetManage';
 import { BudgetEdit } from './BudgetEdit';
 import { DebtManage } from './DebtManage';
 import { BalanceSheetView } from './BalanceSheet';
+import { AiAssistant } from './AiAssistant';
 import { SortDialog } from '../components/SortDialog';
 import { AccountDetailDialog } from '../components/AccountDetailDialog';
 import { InlineExpansionState } from '../ui/InlineExpansionState';
@@ -32,6 +33,14 @@ import { InlineExpansionState } from '../ui/InlineExpansionState';
 struct Index {
   @State accounts: Account[] = [];
   @State selectedTab: number = 0; // 0 账户 1 交易 2 模板 3 更多
+  /** 更多 Tab 底部菜单（对齐安卓：预算编制/交易对手/债务/设置） */
+  @State moreSheetVisible: boolean = false;
+  /** 交易操作菜单（三级：root/grouping/sort，二级菜单分组与排序） */
+  @State txMenuVisible: boolean = false;
+  @State txMenuLevel: string = 'root';
+  /** 交易排序（对齐安卓 Sort.transactionSort：按日期/金额 + 升降序） */
+  @State txSortKey: string = 'date'; // date | amount
+  @State txSortDirection: string = 'desc'; // asc | desc
   /** 账户 Tab 内视图：0=账户列表，1=资产负债表（对齐安卓 AccountsScreenTab，点击左上角标题下拉切换） */
   @State accountView: number = 0;
   /** 资产负债表打印指令计数：headerBar 点击打印图标时递增，触发 BalanceSheetView 导出 PDF */
@@ -207,17 +216,18 @@ struct Index {
    * 单账户视图 / 显示全部时原样返回
    */
   private applyAccountFilter(list: Transaction[]): Transaction[] {
-    if (!this.isAggregate() || this.activeFilterType < 0) {
-      return list;
-    }
-    const filtered: Transaction[] = [];
-    for (const t of list) {
-      const acc = this.accounts.find((a: Account) => a.id === t.accountId);
-      if (acc && acc.type === this.activeFilterType) {
-        filtered.push(t);
+    let result = list;
+    if (this.isAggregate() && this.activeFilterType >= 0) {
+      const filtered: Transaction[] = [];
+      for (const t of list) {
+        const acc = this.accounts.find((a: Account) => a.id === t.accountId);
+        if (acc && acc.type === this.activeFilterType) {
+          filtered.push(t);
+        }
       }
+      result = filtered;
     }
-    return filtered;
+    return this.sortTransactions(result);
   }
 
   /**
@@ -317,6 +327,46 @@ struct Index {
     const next = (this.grouping + 1) % 4;
     this.grouping = next as AccountGrouping;
     this.settings.setNumber(PREF_KEY.GROUPING, next);
+  }
+
+  /** 设置分组并刷新交易列表 */
+  private setGrouping(g: AccountGrouping): void {
+    this.grouping = g;
+    this.settings.setNumber(PREF_KEY.GROUPING, g);
+    this.txMenuVisible = false;
+    this.txMenuLevel = 'root';
+  }
+
+  /** 交易排序标签 */
+  private txSortLabel(): string {
+    const keyLabel = this.txSortKey === 'amount' ? '金额' : '日期';
+    const dirLabel = this.txSortDirection === 'asc' ? '升序' : '降序';
+    return `排序（${keyLabel}·${dirLabel}）`;
+  }
+
+  /** 设置交易排序并刷新 */
+  private setTxSort(key: string, direction: string): void {
+    this.txSortKey = key;
+    this.txSortDirection = direction;
+    this.txMenuVisible = false;
+    this.txMenuLevel = 'root';
+    const list = this.transactionCache.get(this.selectedAccountId) || [];
+    this.currentTransactions = this.sortTransactions(list);
+    this.recalcSummaries(this.currentTransactions);
+  }
+
+  /** 交易排序（按日期/金额 + 升降序） */
+  private sortTransactions(list: Transaction[]): Transaction[] {
+    const sorted = [...list];
+    if (this.txSortKey === 'amount') {
+      sorted.sort((a: Transaction, b: Transaction) => Math.abs(a.amount) - Math.abs(b.amount));
+    } else {
+      sorted.sort((a: Transaction, b: Transaction) => a.date - b.date);
+    }
+    if (this.txSortDirection === 'desc') {
+      sorted.reverse();
+    }
+    return sorted;
   }
 
   private async toggleStatus(id: number): Promise<void> {
@@ -493,6 +543,10 @@ struct Index {
               }
 
               TabContent() {
+                this.aiTab()
+              }
+
+              TabContent() {
                 this.templatesTab()
               }
 
@@ -508,13 +562,55 @@ struct Index {
             .onChange((index: number) => {
               this.selectedTab = index;
               this.transactionToolsExpanded = false;
+              this.moreSheetVisible = false;
             })
+
+            // 更多浮层（自定义非模态：位于内容区底部、导航上方，不拦截导航点击）
+            if (this.moreSheetVisible) {
+              Column({ space: 4 }) {
+                Row() {
+                  Text('更多')
+                    .fontSize(16)
+                    .fontWeight(FontWeight.Bold)
+                    .fontColor($r('app.color.textPrimary'))
+                  Blank()
+                  Text('✕')
+                    .fontSize(16)
+                    .fontColor($r('app.color.textSecondary'))
+                    .padding(8)
+                    .onClick(() => {
+                      this.moreSheetVisible = false;
+                    })
+                }
+                .width('100%')
+
+                this.moreSheetRow($r('app.media.ic_chart'), '预算编制', '管理预算和支出目标', () => {
+                  this.moreSheetVisible = false;
+                  this.pathStack.pushPathByName('BudgetManage', null);
+                })
+                this.moreSheetRow($r('app.media.ic_locked'), '交易对手/债务', '管理借款与往来', () => {
+                  this.moreSheetVisible = false;
+                  this.pathStack.pushPathByName('DebtManage', null);
+                })
+                this.moreSheetRow($r('app.media.ic_settings'), '设置', '调整应用偏好', () => {
+                  this.moreSheetVisible = false;
+                  router.pushUrl({ url: 'pages/Settings' }).catch(() => {
+                  });
+                })
+              }
+              .width('100%')
+              .padding({ left: 16, right: 16, bottom: 12, top: 8 })
+              .backgroundColor($r('app.color.cardBackgroundColor'))
+              .borderRadius({ topLeft: 20, topRight: 20 })
+              .shadow({ radius: 16, color: 'rgba(0,0,0,0.12)', offsetY: -2 })
+            }
 
             Row() {
               this.tabBuilder(0, '账户', $r('app.media.ic_tab_account'))
               this.tabBuilder(1, '交易', $r('app.media.ic_tab_transaction'))
-              this.tabBuilder(2, '模板', $r('app.media.ic_tab_template'))
-              this.tabBuilder(3, '更多', $r('app.media.ic_tab_more'))
+              this.tabBuilder(2, 'AI', $r('app.media.ic_ai_robot'))
+              this.tabBuilder(3, '模板', $r('app.media.ic_tab_template'))
+              this.tabBuilder(4, '更多', $r('app.media.ic_tab_more'))
             }
             .width('100%')
             .height($r('app.float.native_bottom_bar_height'))
@@ -532,6 +628,75 @@ struct Index {
     .mode(NavigationMode.Stack)
     .hideTitleBar(true)
     .navDestination(this.pageMap)
+
+  }
+
+  /**
+   * 更多 Tab 底部菜单内容
+   */
+  @Builder
+  moreSheetContent() {
+    Column({ space: 4 }) {
+      Text('更多')
+        .fontSize(16)
+        .fontWeight(FontWeight.Bold)
+        .fontColor($r('app.color.textPrimary'))
+        .margin({ top: 8, bottom: 8 })
+
+      this.moreSheetRow($r('app.media.ic_chart'), '预算编制', '管理预算和支出目标', () => {
+        this.moreSheetVisible = false;
+        this.pathStack.pushPathByName('BudgetManage', null);
+      })
+
+      this.moreSheetRow($r('app.media.ic_locked'), '交易对手/债务', '管理借款与往来', () => {
+        this.moreSheetVisible = false;
+        this.pathStack.pushPathByName('DebtManage', null);
+      })
+
+      this.moreSheetRow($r('app.media.ic_settings'), '设置', '调整应用偏好', () => {
+        this.moreSheetVisible = false;
+        router.pushUrl({ url: 'pages/Settings' }).catch(() => {
+        });
+      })
+    }
+    .width('100%')
+    .padding({ left: 16, right: 16, bottom: 16 })
+  }
+
+  /**
+   * 更多底部菜单行
+   */
+  @Builder
+  moreSheetRow(icon: Resource, title: string, description: string, onClick: () => void) {
+    Row({ space: 14 }) {
+      Stack() {
+        Image(icon)
+          .width(24)
+          .height(24)
+          .fillColor($r('app.color.primaryColor'))
+      }
+      .width(44)
+      .height(44)
+      .borderRadius(14)
+      .backgroundColor($r('app.color.surfaceBrandSoft'))
+
+      Column({ space: 3 }) {
+        Text(title)
+          .fontSize(16)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.textPrimary'))
+        Text(description)
+          .fontSize(13)
+          .fontColor($r('app.color.textSecondary'))
+      }
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Start)
+    }
+    .width('100%')
+    .height(64)
+    .padding({ left: 8, right: 8 })
+    .borderRadius(12)
+    .onClick(onClick)
   }
 
   /**
@@ -577,12 +742,19 @@ struct Index {
         .fontColor(this.selectedTab === tabIndex ? $r('app.color.primaryColor') : $r('app.color.textSecondary'))
         .fontWeight(this.selectedTab === tabIndex ? FontWeight.Medium : FontWeight.Normal)
     }
-    .width('25%')
+    .width('20%')
     .height('100%')
     .justifyContent(FlexAlign.Center)
     .accessibilityText(label)
     .onClick(() => {
-      this.selectedTab = tabIndex;
+      if (tabIndex === 4) {
+        // 更多 Tab：弹出底部菜单（预算编制/交易对手/债务/设置）
+        this.moreSheetVisible = true;
+      } else {
+        // 先关闭底部浮层（避免与目标页叠加），再切换 Tab
+        this.moreSheetVisible = false;
+        this.selectedTab = tabIndex;
+      }
       this.transactionToolsExpanded = false;
     })
   }
@@ -593,9 +765,7 @@ struct Index {
       this.headerBar('更多')
       List({ space: 8 }) {
         ListItem() {
-          this.moreMenuRow($r('app.media.ic_ai_robot'), 'AI 记账与洞察', '智能记账、分析与建议', () => this.navigateToAi())
-        }
-        ListItem() {
+
           this.moreMenuRow($r('app.media.ic_category'), '类别', '管理收支分类', () => {
             router.pushUrl({ url: 'pages/CategoryManage' }).catch(() => {
             });
@@ -1049,6 +1219,25 @@ struct Index {
     }
     .width('100%')
     .height('100%')
+  }
+
+  @Builder
+  aiTab() {
+    AiAssistant({
+      onDataChanged: () => {
+        this.refreshAfterAiChange();
+      }
+    })
+  }
+
+  /** AI 写操作后刷新账户/模板/交易数据（生命周期联动） */
+  private async refreshAfterAiChange(): Promise<void> {
+    this.accounts = await this.repository.getAccounts();
+    this.accounts = this.sortAccounts(this.accounts);
+    this.templates = await this.repository.getTemplates();
+    if (this.selectedAccountId >= 0) {
+      await this.refreshTransactions(this.selectedAccountId);
+    }
   }
 
   @Builder
@@ -1551,7 +1740,7 @@ struct Index {
       }
       Blank()
       // 模板页右上角筛选（对齐安卓模板与计划筛选，就近展开非弹窗）
-      if (this.selectedTab === 2) {
+      if (this.selectedTab === 3) {
         this.rootMenuAction($r('app.media.ic_filter_list'), '筛选模板', this.templateFilterMenu())
       }
       // 账户列表视图右上角操作（对齐安卓：ViewOptionsMenu Tune + ManageEntitiesMenu DataObject）
@@ -1861,44 +2050,146 @@ struct Index {
           this.navigateToSearch();
         })
 
-      Button('AI')
-        .width(64)
-        .height($r('app.float.native_touch_target'))
-        .padding(0)
-        .fontSize(14)
-        .fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.primaryColor'))
-        .backgroundColor($r('app.color.surfaceBrandSoft'))
-        .borderRadius(24)
-        .stateEffect(true)
-        .accessibilityText('AI 记账与洞察')
-        .accessibilityDescription('打开 AI 助手，进行智能记账与收支分析')
-        .onClick(() => {
-          this.navigateToAi();
-        })
 
       Button() {
-        Image(this.transactionToolsExpanded ? $r('sys.media.ohos_ic_public_arrow_up') :
-          $r('sys.media.ohos_ic_public_more'))
+        Image($r('sys.media.ohos_ic_public_more'))
           .width(22)
           .height(22)
-          .fillColor(this.transactionToolsExpanded ? $r('app.color.primaryColor') :
-            $r('app.color.iconSecondary'))
+          .fillColor($r('app.color.iconSecondary'))
       }
         .type(ButtonType.Circle)
         .width(48)
         .height(48)
-        .backgroundColor(this.transactionToolsExpanded ? $r('app.color.surfaceBrandSoft') : Color.Transparent)
+        .backgroundColor(Color.Transparent)
         .stateEffect(true)
-        .accessibilityText(this.transactionToolsExpanded ? '收起交易操作' : '展开交易操作')
+        .accessibilityText('更多交易操作')
+        .bindPopup($$this.txMenuVisible, {
+          builder: this.txMenuPopupBuilder(),
+          placement: Placement.BottomRight,
+          offset: { x: 0, y: 8 },
+          enableArrow: false
+        })
         .onClick(() => {
-          this.transactionToolsExpanded = InlineExpansionState.toggle(this.transactionToolsExpanded);
+          this.txMenuLevel = 'root';
+          this.txMenuVisible = !this.txMenuVisible;
         })
     }
     .width('100%')
     .height(56)
     .padding({ left: 16, right: 4 })
     .backgroundColor($r('app.color.pageBackground'))
+  }
+
+  /**
+   * 交易操作弹层（一级：分组/排序/分布图/历史记录/导出CSV/筛选；分组/排序展开二级）
+   */
+  @Builder
+  txMenuPopupBuilder() {
+    Column({ space: 2 }) {
+      if (this.txMenuLevel === 'grouping') {
+        // 二级：分组
+        this.txMenuItem(`✓ 分组：${this.groupingLabel()}`, 0, () => {
+          this.txMenuLevel = 'root';
+        })
+        this.txMenuItem('不分组', 1, () => {
+          this.setGrouping(AccountGrouping.NONE);
+        })
+        this.txMenuItem('按类型', 1, () => {
+          this.setGrouping(AccountGrouping.TYPE);
+        })
+        this.txMenuItem('按货币', 1, () => {
+          this.setGrouping(AccountGrouping.CURRENCY);
+        })
+        this.txMenuItem('按标记', 1, () => {
+          this.setGrouping(AccountGrouping.FLAG);
+        })
+      } else if (this.txMenuLevel === 'sort') {
+        // 二级：排序
+        this.txMenuItem('排序方式', 0, () => {
+          this.txMenuLevel = 'root';
+        })
+        this.txMenuItem('按日期（最新在前）', 1, () => {
+          this.setTxSort('date', 'desc');
+        })
+        this.txMenuItem('按日期（最早在前）', 1, () => {
+          this.setTxSort('date', 'asc');
+        })
+        this.txMenuItem('按金额（高到低）', 1, () => {
+          this.setTxSort('amount', 'desc');
+        })
+        this.txMenuItem('按金额（低到高）', 1, () => {
+          this.setTxSort('amount', 'asc');
+        })
+      } else {
+        // 一级菜单
+        this.txMenuItem(`分组：${this.groupingLabel()}`, 0, () => {
+          this.txMenuLevel = 'grouping';
+        })
+        this.txMenuItem(this.txSortLabel(), 0, () => {
+          this.txMenuLevel = 'sort';
+        })
+        this.txMenuItem('分布图', 0, () => {
+          this.txMenuVisible = false;
+          this.navigateToDistribution();
+        })
+        this.txMenuItem('历史记录', 0, () => {
+          this.txMenuVisible = false;
+          this.navigateToHistory();
+        })
+        this.txMenuItem('导出 CSV', 0, () => {
+          this.txMenuVisible = false;
+          this.exportCsv();
+        })
+        this.txMenuItem('筛选', 0, () => {
+          this.txMenuVisible = false;
+          this.navigateToSearch();
+        })
+      }
+    }
+    .width(210)
+    .padding(8)
+    .borderRadius(12)
+    .backgroundColor(Color.White)
+    .shadow({ radius: 16, color: 'rgba(0,0,0,0.15)', offsetY: 4 })
+  }
+
+  /**
+   * 交易操作弹层菜单项
+   * level 0=一级标题/可再展开，1=可执行项
+   */
+  @Builder
+  txMenuItem(label: string, level: number, onClick: () => void) {
+    Row() {
+      if (level === 1) {
+        Text(label)
+          .fontSize(15)
+          .fontColor($r('app.color.textPrimary'))
+          .layoutWeight(1)
+        Image($r('sys.media.ohos_ic_public_arrow_right'))
+          .width(16)
+          .height(16)
+          .opacity(0.3)
+      } else {
+        Text(label)
+          .fontSize(15)
+          .fontWeight(level === 0 ? FontWeight.Medium : FontWeight.Normal)
+          .fontColor($r('app.color.textPrimary'))
+          .layoutWeight(1)
+        if (label === '分组' || label.startsWith('分组') || label === '排序方式' || label.startsWith('排序')) {
+          Image($r('sys.media.ohos_ic_public_arrow_right'))
+            .width(16)
+            .height(16)
+            .opacity(0.3)
+        }
+      }
+    }
+    .width('100%')
+    .height(40)
+    .padding({ left: 12, right: 12 })
+    .borderRadius(8)
+    .onClick(() => {
+      onClick();
+    })
   }
 
   /**

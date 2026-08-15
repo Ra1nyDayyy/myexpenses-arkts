@@ -4,6 +4,10 @@ import { Transaction } from '../model/Transaction';
 import { Repository } from '../database/Repository';
 import { AiIntent, AiService } from '../database/AiService';
 import { AiExecutionResult, AiExecutor } from '../database/AiExecutor';
+import { photoAccessHelper } from '@kit.MediaLibraryKit';
+import { audio } from '@kit.AudioKit';
+import { abilityAccessCtrl, common, Permissions, bundleManager } from '@kit.AbilityKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { AiIntentValidator } from '../ai/AiIntentValidator';
 import {
   AiExecutionPlan,
@@ -28,14 +32,23 @@ interface InsightSnapshot {
   trend: MonthlyInsight[];
 }
 
+/** 对话消息：role user/ai，kind text（普通文本）/bill（待确认账单预览） */
+interface ChatMessage {
+  role: string;
+  text: string;
+  kind: string;
+}
+
 /**
  * AI 记账与洞察。
  *
  * 写操作只开放单笔收支创建，并且必须经过结构化预览；洞察完全在本地计算。
  */
-@Entry
 @Component
-struct AiAssistant {
+export struct AiAssistant {
+  /** 数据变更回调（创建账户/记账后通知宿主刷新账户/交易/模板） */
+  onDataChanged: () => void = () => {
+  };
   @State mode: number = 0; // 0 一句话记账，1 消费洞察
   @State loading: boolean = false;
   @State hasData: boolean = false;
@@ -58,6 +71,17 @@ struct AiAssistant {
   @State aiIntent: AiIntent | null = null;
   @State aiStatusText: string = '';
   @State aiStatusIsError: boolean = false;
+  /** 对话式消息列表（ChatGPT 风格） */
+  @State chatMessages: ChatMessage[] = [];
+  @State chatInput: string = '';
+  /** 待发送附件（图片 URI 列表） */
+  @State chatAttachments: string[] = [];
+  /** 语音输入（麦克风）状态 */
+  @State isRecording: boolean = false;
+  /** 录音采集器与数据 */
+  private capturer: audio.AudioCapturer | null = null;
+  private recordChunks: ArrayBuffer[] = [];
+  private recordTimer: number | undefined = undefined;
 
   private repository: Repository = Repository.getInstance();
   private insightCache: Map<string, InsightSnapshot> = new Map();
@@ -68,6 +92,14 @@ struct AiAssistant {
       this.accountContextId = params['accountId'] as number;
     }
     this.analyze();
+    // 欢迎消息（ChatGPT 风格）
+    if (this.chatMessages.length === 0) {
+      this.chatMessages = [{
+        role: 'ai',
+        text: '你好，我是你的记账助手。\n· 说一句"午饭35元"来记账\n· 问"这个月花了多少"查看收支洞察',
+        kind: 'text'
+      }];
+    }
   }
 
   private currentMonthRange(): InsightTimeRange {
@@ -239,8 +271,243 @@ struct AiAssistant {
     return '暂时没能理解这句话。当前支持“午饭35元”这类单笔收支记录。';
   }
 
+  /** 选择图片附件（photoAccessHelper 相册选择） */
+  private async pickAttachment(): Promise<void> {
+    try {
+      const photoPicker = new photoAccessHelper.PhotoViewPicker();
+      const selectResult = await photoPicker.select({
+        MIMEType: photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE,
+        maxSelectNumber: 9
+      });
+      if (selectResult && selectResult.photoUris && selectResult.photoUris.length > 0) {
+        this.chatAttachments = [...this.chatAttachments, ...selectResult.photoUris];
+      }
+    } catch (e) {
+      promptAction.showToast({ message: '选择附件失败：' + JSON.stringify(e) });
+    }
+  }
+
+  /** 开始录音（AudioCapturer 采集麦克风音频） */
+  private async startRecording(): Promise<void> {
+    try {
+      // 直接尝试采集（module.json5 已声明 MICROPHONE；模拟器权限状态可能异常，capturer 失败再提示）
+      const audioStreamInfo: audio.AudioStreamInfo = {
+        samplingRate: audio.AudioSamplingRate.SAMPLE_RATE_16000,
+        channels: audio.AudioChannel.CHANNEL_1,
+        sampleFormat: audio.AudioSampleFormat.SAMPLE_FORMAT_S16LE,
+        encodingType: audio.AudioEncodingType.ENCODING_TYPE_RAW
+      };
+      const audioCapturerInfo: audio.AudioCapturerInfo = {
+        source: audio.SourceType.SOURCE_TYPE_MIC,
+        capturerFlags: 0
+      };
+      this.capturer = await audio.createAudioCapturer({
+        streamInfo: audioStreamInfo,
+        capturerInfo: audioCapturerInfo
+      });
+      // 用 readData 事件订阅数据，避免阻塞读卡死主线程
+      this.capturer.on('readData', (buffer: ArrayBuffer) => {
+        if (buffer && buffer.byteLength > 0) {
+          this.recordChunks.push(buffer);
+        }
+      });
+      await this.capturer.start();
+      this.isRecording = true;
+      this.recordChunks = [];
+      promptAction.showToast({ message: '正在录音，再次点击结束' });
+    } catch (e) {
+      this.isRecording = false;
+      const err = JSON.stringify(e);
+      if (err.includes('201') || err.includes('permission') || err.includes('Permission')) {
+        promptAction.showToast({ message: '需要麦克风权限才能语音输入' });
+      } else {
+        promptAction.showToast({ message: '录音启动失败：' + err });
+      }
+    }
+  }
+
+
+  /** 停止录音：保存 WAV 并尝试 ASR 转文字 */
+  private async stopRecording(): Promise<void> {
+    this.isRecording = false;
+    try {
+      if (this.capturer) {
+        this.capturer.off('readData');
+        await this.capturer.stop();
+        await this.capturer.release();
+        this.capturer = null;
+      }
+      if (this.recordChunks.length === 0) {
+        promptAction.showToast({ message: '未采集到音频' });
+        return;
+      }
+      // 拼接 WAV（16kHz 16bit 单声道）
+      const wav = this.buildWav(this.recordChunks);
+      const recognized = await this.tryAsr(wav);
+      if (recognized.length > 0) {
+        this.chatInput = recognized;
+        promptAction.showToast({ message: '已识别：' + recognized });
+      } else {
+        promptAction.showToast({ message: '语音识别服务暂不可用（未识别到文字）' });
+      }
+    } catch (e) {
+      promptAction.showToast({ message: '录音结束异常：' + JSON.stringify(e) });
+    } finally {
+      this.recordChunks = [];
+    }
+  }
+
+  /** 组装 WAV 文件（PCM 加 WAV 头） */
+  private buildWav(chunks: ArrayBuffer[]): Uint8Array {
+    let total = 0;
+    for (let c of chunks) {
+      total += c.byteLength;
+    }
+    const dataSize = total;
+    const buffer = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(buffer);
+    const writeStr = (offset: number, s: string): void => {
+      for (let i = 0; i < s.length; i++) {
+        view.setUint8(offset + i, s.charCodeAt(i));
+      }
+    };
+    writeStr(0, 'RIFF');
+    view.setUint32(4, 36 + dataSize, true);
+    writeStr(8, 'WAVE');
+    writeStr(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, 16000, true);
+    view.setUint32(28, 16000 * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeStr(36, 'data');
+    view.setUint32(40, dataSize, true);
+    let offset = 44;
+    for (let c of chunks) {
+      const chunk = new Uint8Array(c);
+      for (let i = 0; i < chunk.length; i++) {
+        view.setUint8(offset + i, chunk[i]);
+      }
+      offset += chunk.length;
+    }
+    return new Uint8Array(buffer);
+  }
+
+  /** 尝试语音识别（ASR）。当前专属实例音频接口不可用，预留接入点 */
+  private async tryAsr(wav: Uint8Array): Promise<string> {
+    // 预留：接入阿里云 NLS / 讯飞 / 其他 ASR 服务
+    // 当前专属大模型实例不支持音频输入，返回空串由上层提示
+    return '';
+  }
+
+  /** 与记账无关的请求检测（本地兜底，明确拒绝） */
+  private isUnrelatedQuery(text: string): boolean {
+    const keywords: string[] = [
+      '写代码', '写一段', '编程', '写文章', '写诗', '写小说', '翻译', '数学题', '解方程',
+      '新闻', '天气', '股票行情', '代码', '算法', 'python', 'java', 'javascript', 'sql',
+      '怎么实现', '帮我开发', '写个程序', '聊天', '讲个笑话', '推荐电影', '音乐'
+    ];
+    for (let kw of keywords) {
+      if (text.toLowerCase().includes(kw)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** 对话式发送：用户消息 → AI 识别 → 待确认账单 / 洞察回复 */
+  private async sendChatMessage(): Promise<void> {
+    const text = this.chatInput.trim();
+    if (text.length === 0 || this.aiLoading) {
+      return;
+    }
+    this.chatMessages = [...this.chatMessages, { role: 'user', text: text, kind: 'text' }];
+    this.chatInput = '';
+    this.aiLoading = true;
+    this.aiIntent = null;
+    try {
+      // 全程调用大模型识别意图（领域边界/拒绝/账户创建均由大模型判断）
+      const intent = await AiService.getInstance().understand(text);
+      // 无关请求（大模型判定 action=refuse）：明确拒绝
+      if (intent.action === 'refuse') {
+        this.pushAiText('我只用于记账和记账分析相关操作，无法处理与此无关的问题。');
+        return;
+      }
+      const validation = AiIntentValidator.validate(intent);
+      if (!validation.valid) {
+        this.pushAiText(validation.error);
+        return;
+      }
+      // 创建账户（account create）：直接执行并回复
+      if (intent.domain === 'account' && intent.action === 'create') {
+        const execResult = await AiExecutor.getInstance().execute(intent);
+        this.pushAiText(execResult.message);
+        if (execResult.ok) {
+          this.onDataChanged();
+        }
+        return;
+      }
+      // 查询/筛选/排序 → 洞察回复
+      if (intent.action === 'query' || intent.action === 'filter' || intent.action === 'sort') {
+        this.pushAiText(this.insightReply());
+        return;
+      }
+      // 记账（create）→ 待确认账单
+      const prepared = this.prepareCreateIntent(intent);
+      const v2 = AiIntentValidator.validate(prepared);
+      if (!v2.valid) {
+        this.pushAiText(v2.error);
+        return;
+      }
+      if (!this.intentAccount(prepared)) {
+        this.pushAiText(this.accounts.length === 0 ?
+          '当前没有可用账户，请先创建账户后再记账。' : '指定账户不存在，请重新选择账户。');
+        return;
+      }
+      this.aiIntent = prepared;
+      this.chatMessages = [...this.chatMessages, { role: 'ai', text: '', kind: 'bill' }];
+    } catch (error) {
+      this.pushAiText(this.friendlyError(error as Object));
+    } finally {
+      this.aiLoading = false;
+    }
+  }
+
+  /** 追加 AI 文本消息 */
+  private pushAiText(text: string): void {
+    this.chatMessages = [...this.chatMessages, { role: 'ai', text: text, kind: 'text' }];
+  }
+
+  /** 洞察提问词法判断（不调大模型，直接本地回复） */
+  private isInsightQuery(text: string): boolean {
+    const keywords: string[] = ['这个月', '本月', '花了多少', '用了多少', '收支', '结余', '收入', '支出', '趋势', '分析', '消费', '账单'];
+    for (let kw of keywords) {
+      if (text.includes(kw)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** 洞察回复摘要（复用本地分析数据） */
+  private insightReply(): string {
+    const lines: string[] = [];
+    lines.push(`本月收入 ${this.moneyText(this.totalIncome, true)}，支出 ${this.moneyText(this.totalExpense)}，结余 ${this.moneyText(this.balance)}。`);
+    if (this.tips.length > 0) {
+      for (let t of this.tips.slice(0, 3)) {
+        lines.push(`· ${t}`);
+      }
+    } else {
+      lines.push('本月数据还比较少，多记几笔后再回来查看趋势。');
+    }
+    return lines.join('\n');
+  }
+
   private async recognizeIntent(): Promise<void> {
     const text = this.aiInput.trim();
+
     if (text.length === 0 || this.aiLoading) {
       return;
     }
@@ -904,31 +1171,297 @@ struct AiAssistant {
     Column() {
       PageHeader({
         title: 'AI 记账与洞察',
-        rightText: this.mode === 1 ? '刷新' : '',
+        showBack: false,
         showSpeech: false,
         onBack: () => {
           router.back();
-        },
-        onRight: () => {
-          this.analyze();
         }
       })
 
-      Column() {
-        this.modeTabs()
+      // 对话消息列表（ChatGPT 风格）
+      Scroll() {
+        Column({ space: 12 }) {
+          ForEach(this.chatMessages, (msg: ChatMessage) => {
+            if (msg.role === 'user') {
+              this.userBubble(msg.text)
+            } else if (msg.kind === 'bill') {
+              this.billBubble()
+            } else {
+              this.aiBubble(msg.text)
+            }
+          }, (msg: ChatMessage, index: number) => `chat_${index}_${msg.text}`)
+        }
+        .width('100%')
+        .padding({ left: 16, right: 16, top: 12, bottom: 12 })
       }
       .width('100%')
-      .padding({ left: 16, right: 16, bottom: 8 })
+      .layoutWeight(1)
+      .align(Alignment.Top)
+      .scrollBar(BarState.Auto)
 
-      if (this.mode === 0) {
-        this.bookkeepingContent()
-      } else {
-        this.insightsContent()
+      // 底部输入栏
+      Column() {
+        // 附件预览（可删除）
+        if (this.chatAttachments.length > 0) {
+          Flex({ wrap: FlexWrap.Wrap }) {
+            ForEach(this.chatAttachments, (uri: string, index: number) => {
+              Stack({ alignContent: Alignment.TopEnd }) {
+                Image(uri)
+                  .width(64)
+                  .height(64)
+                  .borderRadius(8)
+                  .objectFit(ImageFit.Cover)
+                Text('✕')
+                  .fontSize(12)
+                  .fontColor(Color.White)
+                  .width(20)
+                  .height(20)
+                  .textAlign(TextAlign.Center)
+                  .backgroundColor('#99000000')
+                  .borderRadius(10)
+                  .onClick(() => {
+                    this.chatAttachments.splice(index, 1);
+                    this.chatAttachments = [...this.chatAttachments];
+                  })
+              }
+              .width(64)
+              .height(64)
+              .margin({ right: 8, bottom: 8 })
+            }, (uri: string, index: number) => `att_${index}_${uri}`)
+          }
+          .width('100%')
+          .padding({ left: 12, right: 12, top: 8 })
+        }
+
+        Row({ space: 8 }) {
+          // 附件上传按钮
+          Button() {
+            Image($r('sys.media.ohos_ic_public_add'))
+              .width(22)
+              .height(22)
+              .fillColor($r('app.color.iconSecondary'))
+          }
+            .type(ButtonType.Circle)
+            .width(44)
+            .height(44)
+            .backgroundColor(Color.Transparent)
+            .accessibilityText('上传附件')
+            .onClick(() => {
+              this.pickAttachment();
+            })
+          // 麦克风按钮（语音输入）
+          Button() {
+            if (this.isRecording) {
+              Text('●')
+                .fontSize(16)
+                .fontColor(Color.Red)
+            } else {
+              Image($r('app.media.ic_mic'))
+                .width(20)
+                .height(20)
+                .fillColor($r('app.color.iconSecondary'))
+            }
+          }
+            .type(ButtonType.Circle)
+            .width(44)
+            .height(44)
+            .backgroundColor(this.isRecording ? $r('app.color.surfaceBrandSoft') : Color.Transparent)
+            .accessibilityText(this.isRecording ? '停止录音' : '语音输入')
+            .onClick(() => {
+              promptAction.showToast({ message: '麦克风按钮已点击' });
+              if (this.isRecording) {
+                this.stopRecording();
+              } else {
+                this.startRecording();
+              }
+            })
+          TextInput({
+            placeholder: '例如：午饭35元，或问"这个月花了多少"',
+            text: this.chatInput
+          })
+            .layoutWeight(1)
+            .height(44)
+            .fontSize(15)
+            .backgroundColor($r('app.color.cardBackgroundColor'))
+            .borderRadius(22)
+            .padding({ left: 16, right: 16 })
+            .onChange((v: string) => {
+              this.chatInput = v;
+            })
+            .onSubmit(() => {
+              this.sendChatMessage();
+            })
+          Button(this.aiLoading ? '…' : '发送')
+            .height(44)
+            .fontSize(15)
+            .backgroundColor($r('app.color.primaryColor'))
+            .enabled((this.chatInput.trim().length > 0 || this.chatAttachments.length > 0) && !this.aiLoading)
+            .onClick(() => {
+              this.sendChatMessage();
+            })
+        }
+        .width('100%')
+        .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+        .backgroundColor($r('app.color.pageBackground'))
       }
+      .width('100%')
     }
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.pageBackground'))
+  }
+
+  /** 用户消息气泡（右侧） */
+  @Builder
+  userBubble(text: string) {
+    Row() {
+      Text(text)
+        .fontSize(15)
+        .fontColor(Color.White)
+        .padding({ left: 14, right: 14, top: 10, bottom: 10 })
+        .backgroundColor($r('app.color.primaryColor'))
+        .borderRadius(18)
+        .constraintSize({ maxWidth: '75%' })
+    }
+    .width('100%')
+    .justifyContent(FlexAlign.End)
+  }
+
+  /** AI 文本消息气泡（左侧） */
+  @Builder
+  aiBubble(text: string) {
+    Row() {
+      Text(text)
+        .fontSize(15)
+        .fontColor($r('app.color.textPrimary'))
+        .padding({ left: 14, right: 14, top: 10, bottom: 10 })
+        .backgroundColor($r('app.color.cardBackgroundColor'))
+        .borderRadius(18)
+        .constraintSize({ maxWidth: '80%' })
+        .lineHeight(22)
+    }
+    .width('100%')
+    .justifyContent(FlexAlign.Start)
+  }
+
+  /** 待确认账单气泡（左侧，含预览与操作） */
+  @Builder
+  billBubble() {
+    Column({ space: 8 }) {
+      Row() {
+        Text('待确认账单')
+          .fontSize(15)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.textPrimary'))
+        Blank()
+        Text('尚未写入')
+          .fontSize(11)
+          .fontColor($r('app.color.colorExpense'))
+      }
+      .width('100%')
+
+      if (this.aiIntent) {
+        Divider().color($r('app.color.dividerColor')).strokeWidth(0.5)
+        this.previewRow('收支类型', this.intentTypeLabel(this.aiIntent),
+          this.aiIntent.fields['type'] === 'income' ? $r('app.color.colorIncome') : $r('app.color.colorExpense'))
+        this.previewRow('金额', this.intentAmountLabel(this.aiIntent))
+        this.previewRow('账户', this.intentAccountLabel(this.aiIntent))
+        this.previewRow('分类', this.intentCategoryLabel(this.aiIntent))
+        this.previewRow('备注', String(this.aiIntent.fields['comment'] || '无'))
+        this.previewRow('日期', formatDate(this.intentDate(this.aiIntent)))
+
+        Row({ space: 8 }) {
+          Button('返回修改')
+            .layoutWeight(1)
+            .height(38)
+            .fontSize(13)
+            .fontColor($r('app.color.textSecondary'))
+            .backgroundColor($r('app.color.pageBackground'))
+            .onClick(() => {
+              this.declineChatBill();
+            })
+          Button('确认写入')
+            .layoutWeight(1)
+            .height(38)
+            .fontSize(13)
+            .backgroundColor($r('app.color.primaryColor'))
+            .onClick(() => {
+              this.confirmChatBill();
+            })
+        }
+        .width('100%')
+      }
+    }
+    .width('100%')
+    .padding(14)
+    .backgroundColor($r('app.color.cardBackgroundColor'))
+    .borderRadius(18)
+    .constraintSize({ maxWidth: '90%' })
+  }
+
+  /** 确认写入（对话版：执行后替换账单气泡为结果） */
+  private async confirmChatBill(): Promise<void> {
+    const intent = this.aiIntent;
+    if (!intent || this.aiLoading) {
+      return;
+    }
+    const validation = AiIntentValidator.validate(intent);
+    if (!validation.valid) {
+      this.pushAiText(validation.error);
+      return;
+    }
+    this.aiLoading = true;
+    try {
+      const plan = this.confirmedPlan(intent);
+      if (!plan) {
+        this.pushAiText('所选账户不存在或已失效，请重新校对账单。');
+        return;
+      }
+      const result: AiExecutionResult = await AiExecutor.getInstance().executeConfirmed(plan);
+      // 关联附件（图片）到交易
+      if (result.ok && result.wrote && result.transactionId > 0 && this.chatAttachments.length > 0) {
+        try {
+          await this.repository.setTransactionAttachments(result.transactionId, this.chatAttachments);
+        } catch (e) {
+          // 附件关联失败不影响交易写入
+        }
+      }
+      this.replaceLastBill(result.ok && result.wrote ? result.message : (result.message || '保存失败，请重试'));
+      if (result.ok && result.wrote) {
+        promptAction.showToast({ message: '已记入账本' });
+        this.chatAttachments = [];
+        this.onDataChanged();
+        await this.analyze();
+      }
+    } catch (error) {
+      this.replaceLastBill('保存失败，请检查账本状态后重试。');
+    } finally {
+      this.aiLoading = false;
+      this.aiIntent = null;
+    }
+  }
+
+  /** 返回修改（对话版：移除账单气泡，提示重新描述） */
+  private declineChatBill(): void {
+    const msgs = [...this.chatMessages];
+    const last = msgs[msgs.length - 1];
+    if (last && last.kind === 'bill') {
+      msgs.pop();
+    }
+    msgs.push({ role: 'ai', text: '好的，请重新描述这笔账（例如"午饭35元"）。', kind: 'text' });
+    this.chatMessages = msgs;
+    this.aiIntent = null;
+  }
+
+  /** 替换最后一条账单气泡为结果文本 */
+  private replaceLastBill(text: string): void {
+    const msgs = [...this.chatMessages];
+    const last = msgs[msgs.length - 1];
+    if (last && last.kind === 'bill') {
+      msgs.pop();
+    }
+    msgs.push({ role: 'ai', text: text, kind: 'text' });
+    this.chatMessages = msgs;
   }
 }
 

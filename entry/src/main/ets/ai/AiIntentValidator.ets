@@ -1,13 +1,34 @@
 import { AiIntent, AiIntentValidationResult } from './AiIntentCore';
 
-/** MVP 安全白名单：单笔收支创建，以及交易的只读查询、筛选和排序。 */
+/** MVP 安全白名单：单笔收支创建、账户创建、交易只读查询/筛选/排序、明确拒绝。 */
 export class AiIntentValidator {
   static validate(intent: AiIntent): AiIntentValidationResult {
     if (intent.steps && intent.steps.length > 0) {
       return { valid: false, error: '当前安全版本不支持多步骤操作，暂未执行' };
     }
+    // 明确拒绝（大模型判定与记账无关）：直接放行，由 UI 展示拒绝文案
+    if (intent.action === 'refuse') {
+      return { valid: true, error: '' };
+    }
+    // 创建账户（account create）
+    if (intent.domain === 'account') {
+      if (intent.action !== 'create') {
+        return { valid: false, error: '当前安全版本仅支持创建账户操作，暂未执行' };
+      }
+      const name = intent.fields['name'];
+      if (typeof name !== 'string' || name.trim().length === 0) {
+        return { valid: false, error: '创建账户必须包含账户名称，暂未执行' };
+      }
+      const keys: string[] = Object.keys(intent.fields);
+      for (let key of keys) {
+        if (key !== 'name' && key !== 'currency' && key !== 'accountType') {
+          return { valid: false, error: `创建账户包含未知字段「${key}」，暂未执行` };
+        }
+      }
+      return { valid: true, error: '' };
+    }
     if (intent.domain !== 'transaction') {
-      return { valid: false, error: '当前安全版本仅支持交易操作，暂未执行' };
+      return { valid: false, error: '当前安全版本仅支持交易与账户操作，暂未执行' };
     }
     if (intent.subItems && intent.subItems.length > 0) {
       return { valid: false, error: '当前安全版本不支持拆分交易，暂未执行' };

@@ -168,7 +168,7 @@ export struct AccountListPage {
                   }
                 })
               }
-            }, (acc: Account) => `account_${acc.id}_${acc.sealed}_${acc.excludeFromTotals}_${acc.flagId}`)
+            }, (acc: Account) => `account_${acc.id}_${acc.currentBalance}_${acc.sealed}_${acc.excludeFromTotals}_${acc.flagId}`)
           }
           .layoutWeight(1)
           .width('100%')
@@ -248,7 +248,7 @@ export struct AccountListPage {
                       this.onToggleDynamicExchangeRate(id);
                     }
                   })
-                }, (acc: Account) => `account_${acc.id}_${acc.sealed}_${acc.excludeFromTotals}_${acc.flagId}`)
+                }, (acc: Account) => `account_${acc.id}_${acc.currentBalance}_${acc.sealed}_${acc.excludeFromTotals}_${acc.flagId}`)
 
               }
             }
