@@ -424,7 +424,7 @@ export struct SearchCriterionDialog {
     .width('100%')
     .constraintSize({ maxHeight: '70%' })
     .padding(20)
-    .backgroundColor(Color.White)
+    .backgroundColor($r('app.color.surfaceElevated'))
     .borderRadius(16)
   }
 }

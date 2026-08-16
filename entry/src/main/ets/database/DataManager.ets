@@ -112,9 +112,10 @@ export class DataManager {
     }
     try {
       const basePath = this.context.databaseDir;
-      const srcFile = `${basePath}/myexpenses.db`;
+      // rdb 默认存储于 <databaseDir>/entry/rdb/<dbname>，需精确到实际文件
+      const srcFile = `${basePath}/rdb/myexpenses.db`;
       if (!fs.accessSync(srcFile)) {
-        hilog.error(0x0000, TAG, 'backup src not found');
+        hilog.error(0x0000, TAG, 'backup src not found: ' + srcFile);
         return false;
       }
       const options = new picker.DocumentSaveOptions();
@@ -155,7 +156,7 @@ export class DataManager {
       const uris: string[] = await docPicker.select({ maxSelectNumber: 1 });
       if (uris && uris.length > 0) {
         const basePath = this.context.databaseDir;
-        const dstFile = `${basePath}/myexpenses.db`;
+        const dstFile = `${basePath}/rdb/myexpenses.db`;
         const src = fs.openSync(uris[0], fs.OpenMode.READ_ONLY);
         const dst = fs.openSync(dstFile, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
         const bufSize = 1024 * 1024;

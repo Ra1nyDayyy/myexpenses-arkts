@@ -1,0 +1,26 @@
+[[0,137][1320,332]] 数据 ck=false ch=false
+[[224,193][364,275]] 数据 ck=false ch=false
+[[56,399][280,465]] 管理类别 ck=false ch=false
+[[56,479][512,532]] 添加、编辑、删除类别 ck=false ch=false
+[[56,667][392,733]] 管理付款方式 ck=false ch=false
+[[56,747][557,800]] 现金、信用卡、支付宝等 ck=false ch=false
+[[56,935][168,1001]] 标签 ck=false ch=false
+[[56,1015][375,1068]] 为交易添加标签 ck=false ch=false
+[[56,1202][560,1268]] 未映射交易作为转账 ck=false ch=false
+[[56,1282][148,1335]] 关闭 ck=false ch=false
+[[509,1403][811,1544]] 货币与汇率 ck=false ch=false
+[[56,1611][280,1677]] 管理货币 ck=false ch=false
+[[56,1691][375,1744]] 添加、删除货币 ck=false ch=false
+[[56,1879][224,1945]] 本位币 ck=false ch=false
+[[56,1959][330,2012]] CNY - 人民币 ck=false ch=false
+[[56,2147][336,2213]] 汇率提供商 ck=false ch=false
+[[56,2227][421,2280]] 选择汇率数据来源 ck=false ch=false
+[[56,2414][504,2480]] 自动下载每日汇率 ck=false ch=false
+[[56,2494][193,2547]] 已禁用 ck=false ch=false
+[[534,2615][787,2756]] 价格历史 ck=false ch=false
+[[49,55][188,136]] 10, :, 34 ck=false ch=false
+[[49,66][111,128]] 10 ck=false ch=false
+[[111,71][126,124]] : ck=false ch=false
+[[126,66][188,128]] 34 ck=false ch=false
+[[1182,75][1252,120]] 100 ck=false ch=false
+[[1182,75][1252,120]] 100 ck=false ch=false

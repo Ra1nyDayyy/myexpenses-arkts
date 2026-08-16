@@ -3,7 +3,7 @@ import { Category } from '../model/Category';
 import { Transaction } from '../model/Transaction';
 import { Template } from '../model/SupportEntities';
 import { Repository } from '../database/Repository';
-import { AiIntent, AiService, AiUnderstandResult } from '../database/AiService';
+import { AiIntent, AiService, AiUnderstandResult, AiHistoryMessage } from '../database/AiService';
 import { AiExecutionResult, AiExecutor } from '../database/AiExecutor';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { audio } from '@kit.AudioKit';
@@ -138,12 +138,39 @@ export struct AiAssistant {
     this.analyze();
     // 欢迎消息（ChatGPT 风格）
     if (this.chatMessages.length === 0) {
-      this.chatMessages = [{
-        role: 'ai',
-        text: '你好，我是你的记账助手。\n· 说一句"午饭35元"来记账\n· 问"这个月花了多少"查看收支洞察',
-        kind: 'text'
-      }];
+      this.pushWelcome();
     }
+  }
+
+  /** 欢迎语（aboutToAppear 与新建对话共用） */
+  private pushWelcome(): void {
+    this.chatMessages = [{
+      role: 'ai',
+      text: '你好，我是你的记账助手。\n· 说一句"午饭35元"来记账\n· 问"这个月花了多少"查看收支洞察',
+      kind: 'text'
+    }];
+  }
+
+  /** 新建对话：清空全部对话状态与上下文，恢复欢迎语 */
+  private newConversation(): void {
+    if (this.aiLoading) {
+      promptAction.showToast({ message: '正在处理中，请稍后再新建对话' });
+      return;
+    }
+    this.chatMessages = [];
+    this.aiIntent = null;
+    this.pendingAction = null;
+    this.stepCtx = null;
+    this.stepResume = null;
+    this.candidateList = [];
+    this.candidateType = 'delete';
+    this.chatAttachments = [];
+    this.chatInput = '';
+    this.aiStatusText = '';
+    this.aiStatusIsError = false;
+    this.insightCache.clear();
+    this.pushWelcome();
+    promptAction.showToast({ message: '已开启新对话' });
   }
 
   private currentMonthRange(): InsightTimeRange {
@@ -600,13 +627,15 @@ export struct AiAssistant {
       const thinkingId = this.pushThinking();
       let understandResult: AiUnderstandResult | null = null;
       try {
+        // 组装多轮上下文（不含当前轮 user 消息，避免重复）
+        const history = this.buildLlmHistory();
         // 开启思考模式调用大模型识别意图，并实时回调思考过程
         understandResult = await AiService.getInstance().understandWithThinking(
           text, imageDataUrls, (t: string) => {
             if (t && t.trim().length > 0) {
               this.updateThinking(thinkingId, t);
             }
-          });
+          }, history);
       } finally {
         // 请求结束移除思考气泡（无论成功失败）
         this.removeThinking(thinkingId);
@@ -965,6 +994,62 @@ export struct AiAssistant {
     this.chatMessages = [...this.chatMessages, { role: 'ai', text: text, kind: 'text' }];
   }
 
+  /**
+   * 组装多轮上下文历史（发给大模型）。
+   * 只取 kind==='text' 的 user/ai 消息；assistant 侧存用户可见友好文本（绝不回传内部 JSON/thinking/plan）。
+   * 当前轮 user 消息不纳入（由调用方单独作为最后一条 user 传入）。
+   */
+  private buildLlmHistory(): AiHistoryMessage[] {
+    const turns: AiHistoryMessage[] = [];
+    for (const m of this.chatMessages) {
+      if (m.kind !== 'text') {
+        continue;
+      }
+      if (m.role === 'user') {
+        turns.push({ role: 'user', content: m.text });
+      } else if (m.role === 'ai' && m.text && m.text.trim().length > 0) {
+        // 过滤"未确认已被覆盖"等占位文本，避免污染上下文
+        const t = m.text;
+        if (t.startsWith('（上一步操作未确认') || t.startsWith('（上一次思考已被新指令打断')) {
+          continue;
+        }
+        turns.push({ role: 'assistant', content: t });
+      }
+    }
+    return this.trimHistory(turns);
+  }
+
+  /**
+   * 裁剪历史：最多 10 条、单条 200 字符、总字符预算约 2000。
+   * 从最旧开始丢弃超出预算的部分，保证请求体稳定不超上下文。
+   */
+  private trimHistory(turns: AiHistoryMessage[]): AiHistoryMessage[] {
+    const maxTurns = 10;
+    const maxPerItem = 200;
+    const maxTotal = 2000;
+    const trimmed: AiHistoryMessage[] = [];
+    const last = Math.max(0, turns.length - maxTurns);
+    for (let i = last; i < turns.length; i++) {
+      const m = turns[i];
+      const content = m.content.length > maxPerItem ? m.content.slice(0, maxPerItem) : m.content;
+      const item: AiHistoryMessage = { role: m.role, content: content };
+      trimmed.push(item);
+    }
+    // 总字符预算：从最旧开始丢弃
+    let total = 0;
+    const result: AiHistoryMessage[] = [];
+    for (let i = trimmed.length - 1; i >= 0; i--) {
+      const m = trimmed[i];
+      if (total + m.content.length <= maxTotal) {
+        result.unshift(m);
+        total += m.content.length;
+      } else {
+        break;
+      }
+    }
+    return result;
+  }
+
   /** 推送"思考中"气泡（进行中，无内容） */
   private pushThinking(): number {
     const id = Date.now();
@@ -1117,7 +1202,8 @@ export struct AiAssistant {
     this.aiStatusText = '';
     this.aiStatusIsError = false;
     try {
-      const intent = this.prepareCreateIntent(await AiService.getInstance().understand(text));
+      const history = this.buildLlmHistory();
+      const intent = this.prepareCreateIntent(await AiService.getInstance().understand(text, undefined, history));
       const validation = AiIntentValidator.validate(intent);
       if (!validation.valid) {
         this.aiStatusText = validation.error;
@@ -1774,6 +1860,10 @@ export struct AiAssistant {
         title: 'AI 记账与洞察',
         showBack: false,
         showSpeech: false,
+        rightText: '新建',
+        onRight: () => {
+          this.newConversation();
+        },
         onBack: () => {
           router.back();
         }

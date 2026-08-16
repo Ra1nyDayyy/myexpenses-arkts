@@ -857,3 +857,155 @@ AiService.ets（多模态请求）、AiAssistant.ets（附件转换/发送）、
 
 ### 影响范围
 AiService.ets（understandWithThinking + enable_thinking）、AiAssistant.ets（thinking 气泡 UI）
+
+---
+
+## AI 上下文记忆 + 新建对话（2026-08-16 用户要求，Planner 规划后执行）
+
+### 需求
+1. AI 交互不够智能、太严格、记不住之前说的话 → 加多轮上下文
+2. 提供"新建对话"入口
+
+### 规划
+- team-planner 产出 docs/ai-context-plan.md（根因分析/方案/验收标准）
+
+### 根因
+- AiService 请求体 messages 只有 [system, user]，无历史 → 记不住上下文
+- 页面无清除会话入口
+- SYSTEM_PROMPT 领域边界负面示例过强 + Validator 对 edit/delete 强制 targets、create 未知字段整体拒绝 → "太严格"
+
+### 实施（AiService.ets + AiAssistant.ets）
+1. **多轮上下文**：
+   - AiService 新增 AiHistoryMessage 类型；understand/understandWithThinking 增加 history 参数；messages 组装为 [system, ...history, user]
+   - AiAssistant 新增 buildLlmHistory()/trimHistory()：只取 kind==='text' 的 user/ai 消息，assistant 存用户可见友好文本（绝不回传内部 JSON/thinking/plan）；最多 10 条、单条 200 字符、总 2000 字符；过滤占位文本
+   - sendChatMessage 与 recognizeIntent 两入口均传 history
+2. **SYSTEM_PROMPT 放宽**：
+   - 新增【多轮上下文】：支持"刚才那笔/上一条/之前记的/那个账户"指代前文
+   - 新增【宽容理解】：允许口语省略、夹杂无关词不拒绝、表达不完整结合历史推断
+   - 保留安全底线：写操作确认、金额上限、refuse 防注入
+   - temperature 0.1 → 0.3（表达更自然，JSON 稳定性靠正则+Validator 兜底）
+3. **新建对话**：
+   - 欢迎语抽为 pushWelcome()
+   - PageHeader 加 rightText:'新建' + newConversation()：清空 chatMessages/aiIntent/pendingAction/stepCtx/stepResume/candidateList/chatAttachments/chatInput/insightCache，恢复欢迎语，toast"已开启新对话"；aiLoading 时禁止
+   - 上下文隔离天然成立：history 由 chatMessages 现算，清空即隔离
+
+### 验证
+- 编译通过（BUILD SUCCESSFUL），编译产物含 buildLlmHistory/trimHistory/newConversation/pushWelcome/AiHistoryMessage
+- 模拟器实测：AI 页头部出现"新建"按钮；点击后页面恢复欢迎语、无崩溃
+- 端到端受限：模拟器无法输入中文 + 网络 RTT 59-64s 超时，多轮引用（如"刚才那笔改成40元"）无法实测；建议真机验证 CTX-1/CTX-3/CTX-4 用例（见 ai-context-plan.md 验收标准）
+
+### 验收用例（待真机）
+- CTX-1 多轮引用："午饭35元"确认后 →"刚才那笔改成40元"能定位并出现修改确认
+- CTX-3 新建后上下文隔离："刚才那笔"提示未找到，不触碰旧数据
+- CTX-6/7/8/9 安全底线：删除仍须确认、金额超限拒绝、无关请求 refuse、未知字段拒绝落库
+
+---
+
+## 深色/浅色模式修复（2026-08-16 用户要求：subagent 先验证形成报告，主 agent 再修复测试）
+
+### 验证（theme subagent）
+- THEME_REPORT.md：深色切换成功（系统设置→显示和亮度→深色）
+- 深色 5 问题（P1 账户卡白底、P2 累计卡浅灰、P3 交易页 Total 卡/行/分组头白块、P4 新建交易表单白、P5 交易操作弹层硬编码白底）
+- 浅色 9 页全 PASS；根因 A：dark/color.json 缺 11 键（surface 系列等）；根因 B：Index.ets:2154 + AccountDetailDialog.ets:106 硬编码 Color.White
+
+### 修复
+1. dark/element/color.json 补齐 11 键（surfacePrimary/Secondary/Elevated/BrandSoft/IncomeSoft/ExpenseSoft、dividerSubtle、iconSecondary、scrimColor、interactivePressed/Disabled）——深色值
+2. Index.ets:2154、AccountDetailDialog.ets:106 硬编码 Color.White → $r('app.color.surfaceElevated')
+3. 全局审计：ColorPickerDialog/SearchCriterionDialog/VoiceInputDialog/SortDialog 4 个对话框背景硬编码同步修复；backgroundColor(Color.White/Black) 清零
+
+### 复测（模拟器 B）
+- 深色：账户页（卡/累计卡深色系）、交易页（Total 卡/行/分组头深色系）、新建交易（表单/切换栏深色）、交易操作弹层（深灰底）——全部无白块 ✅
+- 浅色：账户页、交易页正常，无回归 ✅
+- 证据：docs/testing/evidence/theme/fixed/
+
+---
+
+## 设置功能验证与修复（2026-08-16，subagent 验证 → 主 agent 修复）
+
+### 验证（settings subagent）
+- SETTINGS_REPORT.md：设置 13 项 = 1 PASS（数据）/ 2 FAIL（界面、导入导出）/ 10 NOT_IMPLEMENTED（占位页）
+
+### 修复
+1. **SettingsIO 类别分隔符**：新建 CategorySeparatorDialog（CustomDialog+TextInput），替换纯说明 promptAction → 可编辑
+2. **SettingsUI 主题/字体/语言/启动屏幕**：新建 OptionSelectDialog（CustomDialog+onResult），替换 promptAction.showDialog
+
+### 复测结论（模拟器 B）
+- 主题选"深色"重启后生效（截图 #121212 证实）→ 验证 Agent"切换无效"为误判（持久化+应用正常，仅 summary 需重启刷新）
+- 类别分隔符对话框可编辑、确定关闭 ✅
+- 数据页类别管理无回归 ✅
+- 遗留：10 个 NOT_IMPLEMENTED 占位页 + QIF/Grisbi 导入（开发中）+ summary 即时刷新（低优）
+
+---
+
+## 设置功能第二批修复（2026-08-16 继续）
+
+### 新增可用功能（NOT_IMPLEMENTED → 可用）
+- 备份与恢复：SettingsBackup 接入 DataManager.backupDatabase/restoreDatabase，实测备份保存成功、恢复确认弹窗+选择器正常
+- 帮助与反馈：SettingsFeedback 使用帮助+版本信息
+- 高级：SettingsAdvanced 数据库统计+应用信息
+
+### 关键根因修复
+1. **DataManager context 未初始化**（EntryAbility 未调 setContext）→ 导入/备份/恢复的文件选择器全部静默失败
+   - 修复：EntryAbility.onWindowStageCreate 加 DataManager.getInstance().setContext(this.context)
+2. **数据库路径错误**：backup/restore 用 databaseDir/myexpenses.db，实际 rdb 在 databaseDir/rdb/myexpenses.db
+   - 修复：路径改 rdb/myexpenses.db（hilog 证实 src not found 消除，选择器弹出）
+
+### 验证
+- 备份：保存对话框弹出（myexpenses_backup_<ts>.db）→ 保存成功（errorcode=0）✅
+- 恢复：确认弹窗 → 文件选择器弹出 ✅
+- 编译通过
+
+### NOT_IMPLEMENTED 剩余（7 项）
+OCR/同步/WebUI/附加图片/打印/专业版/安全（涉及外部服务或复杂能力，保持占位）
+
+---
+
+## 账户初始余额 bug 修复（2026-08-16 用户反馈"大模型不够聪明：500 yuan per 未生效"）
+
+### 场景复现
+用户先发 "create 3 accounts called test1-3"（3 个账户创建成功），再发 "500 yuan per"（意图：每个账户 500 元初始余额），但后者被丢弃/未理解。
+
+### 根因（三层叠加，非纯模型问题）
+1. **提示词限制**：SYSTEM_PROMPT account/create 字段白名单只有 name/currency/accountType，**没有 initialBalance 字段** → 模型即使理解也无从输出
+2. **执行器限制**：AiExecutor 创建账户只读 name/currency/accountType，**不落地 openingBalance**（恒为 0）
+3. **模型能力**："500 yuan per" 本身语义残缺，且提示词未引导跨指令补充
+
+### 修复
+1. **AiService.ets 提示词**：
+   - account/create 与 account/edit 增加 initialBalance（初始余额，元）
+   - 【多轮上下文】新增规则：用户分多条补充信息时，最新一条视为对上一指令的补充合并理解（如 "500 yuan per" → 补全为 initialBalance）
+2. **AiExecutor.ets**：
+   - create：读 fields.initialBalance → acc.openingBalance = round(initialBalance*100)（分），回复带"初始余额 X 元"
+   - edit：同样支持 initialBalance 修改
+3. **Repository.ets**（无需改）：insertAccount/updateAccount 已写入 opening_balance 列 ← account.openingBalance
+
+### 验证
+- 编译通过；编译产物含 initialBalance（AiService.ts/AiExecutor.ts 各 3 处）
+- 元→分转换逻辑验证：500→50000 分、500.5→50050 分、12.34→1234 分 ✅
+- 端到端受限：模拟器无法输入中文/英文 Prompt + 网络超时，无法实测多步补充场景；建议真机验证：
+  - "创建账户 test，初始余额500元" → 账户显示初始余额 500
+  - "create 3 accounts" + "每个500元" → 3 个账户各 500 初始余额
+
+---
+
+## 账户初始余额 bug 实测验证（2026-08-16 模拟器实测补充）
+
+### 实测方式突破
+发现 uinput `-K -t 'text'` 可在模拟器输入英文 Prompt，实现真实端到端测试（绕过中文输入限制）。
+
+### 实测结果
+1. **"create account test with 500 initial balance"**（单条完整表达）：
+   - 提示词生效：模型返回 fields.initialBalance=500
+   - 校验器放行（本批修复 Validator 白名单加 initialBalance）
+   - 执行器落库：DB `test|50000|CNY|0`（opening_balance=50000 分=500 元）✅
+   - UI 回复："已创建账户「test」（银行，CNY，初始余额 500 元）" ✅
+2. **"create 3 accounts called test1-3"**（多步创建）：
+   - 计划气泡显示 3 步"账户·创建"→ 点执行 → test1/2/3 全部落库 ✅
+3. **"500 yuan per"**（极端省略跨轮补充）：
+   - 模型仍解析为新的 3 步"账户·创建"计划，未合并为 initialBalance——**模型能力边界**（语义残缺）
+   - 但不会报错/误拒绝（跨轮上下文生效，模型基于历史继续解析）
+
+### 结论
+- 核心修复（initialBalance 全链路：提示词→校验器→执行器→DB）**实测通过**
+- 极端省略的跨轮补充依赖模型理解，提示词已引导（"500 yuan per"→补全 initialBalance），建议用户用更完整表达（"每个账户500元初始余额"）
+- 修复文件：AiService.ets（提示词）、AiExecutor.ets（create/edit 落地 openingBalance）、AiIntentValidator.ets（白名单补 initialBalance）

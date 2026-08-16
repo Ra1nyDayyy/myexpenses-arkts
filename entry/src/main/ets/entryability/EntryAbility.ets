@@ -3,6 +3,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { DbHelper } from '../database/DbHelper';
 import { SettingsService } from '../database/SettingsService';
+import { DataManager } from '../database/DataManager';
 
 
 const DOMAIN = 0x0000;
@@ -24,6 +25,8 @@ export default class EntryAbility extends UIAbility {
     try {
       await DbHelper.getInstance().init(this.context);
       await SettingsService.getInstance().init(this.context);
+      // 初始化数据管理器（导入导出/备份恢复依赖 context 打开文件选择器）
+      DataManager.getInstance().setContext(this.context);
       AppStorage.setOrCreate('dbReady', true);
     } catch (err) {
       hilog.error(DOMAIN, 'MyExpenses', 'DB init failed: %{public}s', JSON.stringify(err));

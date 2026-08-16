@@ -163,6 +163,50 @@
     {
       "name": "floatTabItemActive",
       "value": "#330050A7"
+    },
+    {
+      "name": "surfacePrimary",
+      "value": "#1C1C1E"
+    },
+    {
+      "name": "surfaceSecondary",
+      "value": "#2C2C2E"
+    },
+    {
+      "name": "surfaceElevated",
+      "value": "#2C2C2E"
+    },
+    {
+      "name": "surfaceBrandSoft",
+      "value": "#1E3A5F"
+    },
+    {
+      "name": "surfaceIncomeSoft",
+      "value": "#14361B"
+    },
+    {
+      "name": "surfaceExpenseSoft",
+      "value": "#3D1B1C"
+    },
+    {
+      "name": "dividerSubtle",
+      "value": "#1AFFFFFF"
+    },
+    {
+      "name": "iconSecondary",
+      "value": "#8A8A8E"
+    },
+    {
+      "name": "scrimColor",
+      "value": "#99000000"
+    },
+    {
+      "name": "interactivePressed",
+      "value": "#33FFFFFF"
+    },
+    {
+      "name": "interactiveDisabled",
+      "value": "#2EFFFFFF"
     }
   ]
 }

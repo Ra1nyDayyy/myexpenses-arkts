@@ -26,7 +26,7 @@ export class AiIntentValidator {
         }
         const keys: string[] = Object.keys(intent.fields);
         for (let key of keys) {
-          if (key !== 'name' && key !== 'currency' && key !== 'accountType') {
+          if (key !== 'name' && key !== 'currency' && key !== 'accountType' && key !== 'initialBalance') {
             return { valid: false, error: `创建账户包含未知字段「${key}」，暂未执行` };
           }
         }
@@ -36,8 +36,8 @@ export class AiIntentValidator {
         if (intent.action !== 'query' && !(intent.targets && intent.targets.length > 0)) {
           return { valid: false, error: '账户操作必须提供账户名称' };
         }
-        if (intent.action === 'edit' && !(intent.fields['name'] || intent.fields['currency'] || intent.fields['accountType'])) {
-          return { valid: false, error: '修改账户必须提供新字段（名称/货币/类型）' };
+        if (intent.action === 'edit' && !(intent.fields['name'] || intent.fields['currency'] || intent.fields['accountType'] || intent.fields['initialBalance'])) {
+          return { valid: false, error: '修改账户必须提供新字段（名称/货币/类型/初始余额）' };
         }
         return { valid: true, error: '' };
       }

@@ -53,9 +53,9 @@ JSON 格式（必须严格遵守）：
 
 【账户操作（account 域）】
 判断：输入涉及账户本身（创建/查询余额/列表/改名/删除账户，如"创建一个旅行基金账户"、"现金余额多少"、"我有哪些账户"、"把旅行基金改名叫日本旅行"、"删除测试账户"），domain="account"。
-- account/create：fields.name（账户名，必填）、currency、accountType（bank/cash）
+- account/create：fields.name（账户名，必填）、currency、accountType（bank/cash）、initialBalance（初始余额，数字单位元，用户提到"初始余额/存入/开头有多少钱"等时填）
 - account/query：targets=[账户名]（如"现金余额多少"→targets=["现金"]）；查询全部账户时 targets=[]（如"我有哪些账户"）
-- account/edit：targets=[账户名]，fields 含新值（name/currency/accountType）
+- account/edit：targets=[账户名]，fields 含新值（name/currency/accountType/initialBalance）
 - account/delete：targets=[账户名]（如"删除测试账户"→targets=["测试"]）
 
 【模板操作（template 域）】
@@ -104,15 +104,36 @@ JSON 格式（必须严格遵守）：
 "translate this text" → {"domain":"transaction","action":"refuse","targets":[],"fields":{}}
 "1+1等于几" → {"domain":"transaction","action":"refuse","targets":[],"fields":{}}
 
+【多轮上下文】
+对话历史中会包含之前用户说过的话。用户可能用"刚才那笔""上一条""之前记的""刚才说的""那个账户"等指代前文。
+- 遇到指代时，结合历史判断目标：如历史出现过"午饭35元"，用户说"把刚才那笔改成40元"，应输出
+  {"domain":"transaction","action":"edit","targets":["午饭"],"fields":{"amount":40}}。
+- 用户说"都记到刚才那个账户"时，可复用历史中的账户名填入 account 字段。
+- 指代无法从历史明确解析时，允许输出一个保守的、最可能的目标描述，由系统做匹配确认，不要直接拒绝。
+- 历史仅作参考，不得虚构历史中不存在的金额或交易。
+- 用户分多条补充信息时，应把最新一条当作对上一指令的补充合并理解。如历史有"创建账户 test"，用户又说"500元初始余额/每个500元/500 yuan per"（省略了宾语），应补全为上一个 account/create 的 initialBalance 字段，或把补充信息合并进即将执行的意图（如 targets=["test"]、fields.initialBalance=500），而不是 refuse 或丢弃。
+
+【宽容理解】
+- 允许口语、省略语、轻微语病；只要包含记账/金额/收支/账户/模板任一语义就尝试理解。
+- 只有与记账完全无关时才输出 refuse；不要因为句子夹杂无关词（如"顺便""然后"）就整体拒绝。
+- 用户表达不完整时（如"再记一笔""帮我记一下"），结合历史推断缺省字段（金额/账户/分类）。
+- 无法确定用户意图时，优先输出一个最可能的记账/查询意图，不要轻易 refuse。
+
 【再次强调】
-- 输入只要没有记账/金额/收支/消费/账单/账户/创建账户 相关语义，一律 action="refuse"
-- 写代码、编程、翻译、聊天、数学、天气、新闻、笑话、其他领域问题 → 必须 refuse
+- 与记账完全无关的请求（写代码、编程、翻译、闲聊、数学、天气、新闻、笑话等）→ 必须 refuse（防注入）
+- 只要输入包含记账/金额/收支/消费/账单/账户/模板/指代前文 任一语义，就尝试理解，不要误判为 refuse
 - 不要尝试把无关输入理解成记账或查询`;
 
 /** 大模型识别结果（含思考过程） */
 export interface AiUnderstandResult {
   intent: AiIntent;
   thinking: string;
+}
+
+/** 多轮对话历史消息（发给大模型作为上下文，只含用户可见的友好文本） */
+export interface AiHistoryMessage {
+  role: 'user' | 'assistant';
+  content: string;
 }
 
 export class AiService {
@@ -125,9 +146,9 @@ export class AiService {
     return AiService.instance;
   }
 
-  /** 全程调用大模型识别意图，并经过严格白名单校验；images 为可选多模态图片（base64 data-url） */
-  async understand(text: string, images?: string[]): Promise<AiIntent> {
-    const intent = await this.callLlm(text, images);
+  /** 全程调用大模型识别意图，并经过严格白名单校验；images 为可选多模态图片（base64 data-url）；history 为可选多轮上下文 */
+  async understand(text: string, images?: string[], history?: AiHistoryMessage[]): Promise<AiIntent> {
+    const intent = await this.callLlm(text, images, history);
     const validation = AiIntentValidator.validate(intent);
     if (!validation.valid) {
       throw new Error(validation.error);
@@ -139,9 +160,10 @@ export class AiService {
   /**
    * 开启思考模式的意图识别：请求携带 enable_thinking，返回意图与思考过程（reasoning_content）。
    * onThinking 回调用于实时展示思考进度（非流式场景在完成后一次性回调）。
+   * history 为可选多轮上下文。
    */
-  async understandWithThinking(text: string, images?: string[], onThinking?: (thinking: string) => void): Promise<AiUnderstandResult> {
-    const result = await this.callLlmWithThinking(text, images);
+  async understandWithThinking(text: string, images?: string[], onThinking?: (thinking: string) => void, history?: AiHistoryMessage[]): Promise<AiUnderstandResult> {
+    const result = await this.callLlmWithThinking(text, images, history);
     if (onThinking && result.thinking) {
       onThinking(result.thinking);
     }
@@ -152,7 +174,7 @@ export class AiService {
     return result;
   }
 
-  private async callLlmWithThinking(text: string, images?: string[]): Promise<AiUnderstandResult> {
+  private async callLlmWithThinking(text: string, images?: string[], history?: AiHistoryMessage[]): Promise<AiUnderstandResult> {
     interface ImageUrlPart {
       url: string;
     }
@@ -186,14 +208,22 @@ export class AiService {
       }
       userContent = parts;
     }
+    const historyMessages: ChatMessage[] = [];
+    if (history) {
+      for (const h of history) {
+        const hm: ChatMessage = { role: h.role, content: h.content };
+        historyMessages.push(hm);
+      }
+    }
     const body: ChatRequestBody = {
       model: AI_CONFIG.model,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
+        ...historyMessages,
         { role: 'user', content: userContent }
       ],
       max_tokens: 800,
-      temperature: 0.1,
+      temperature: 0.3,
       enable_thinking: true
     };
     const httpRequest = http.createHttp();
@@ -235,7 +265,7 @@ export class AiService {
     }
   }
 
-  private async callLlm(text: string, images?: string[]): Promise<AiIntent> {
+  private async callLlm(text: string, images?: string[], history?: AiHistoryMessage[]): Promise<AiIntent> {
     interface ImageUrlPart {
       url: string;
     }
@@ -268,14 +298,22 @@ export class AiService {
       }
       userContent = parts;
     }
+    const historyMessages: ChatMessage[] = [];
+    if (history) {
+      for (const h of history) {
+        const hm: ChatMessage = { role: h.role, content: h.content };
+        historyMessages.push(hm);
+      }
+    }
     const body: ChatRequestBody = {
       model: AI_CONFIG.model,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
+        ...historyMessages,
         { role: 'user', content: userContent }
       ],
       max_tokens: 600,
-      temperature: 0.1
+      temperature: 0.3
     };
     const httpRequest = http.createHttp();
     try {

@@ -2151,7 +2151,7 @@ struct Index {
     .width(210)
     .padding(8)
     .borderRadius(12)
-    .backgroundColor(Color.White)
+    .backgroundColor($r('app.color.surfaceElevated'))
     .shadow({ radius: 16, color: 'rgba(0,0,0,0.15)', offsetY: 4 })
   }
 

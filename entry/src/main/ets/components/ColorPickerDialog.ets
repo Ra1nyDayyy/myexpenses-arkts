@@ -399,7 +399,7 @@ export struct AccountColorDialog {
     }
     .width('100%')
     .padding(16)
-    .backgroundColor(Color.White)
+    .backgroundColor($r('app.color.surfaceElevated'))
     .borderRadius(16)
   }
 

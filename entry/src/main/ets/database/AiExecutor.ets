@@ -159,9 +159,15 @@ export class AiExecutor {
       acc.label = name;
       acc.currency = String(intent.fields['currency'] || 'CNY');
       acc.type = intent.fields['accountType'] === 'cash' ? AccountType.CASH : AccountType.BANK;
+      // 初始余额：initialBalance 单位为元，转分为最小货币单位存储
+      const initBalance = Number(intent.fields['initialBalance'] || 0);
+      if (initBalance > 0) {
+        acc.openingBalance = Math.round(initBalance * 100);
+      }
       acc.uuid = generateUuid();
       await this.repository.insertAccount(acc);
-      return `已创建账户「${name}」（${acc.type === AccountType.CASH ? '现金' : '银行'}，${acc.currency}）`;
+      const initNote = acc.openingBalance > 0 ? `，初始余额 ${initBalance} 元` : '';
+      return `已创建账户「${name}」（${acc.type === AccountType.CASH ? '现金' : '银行'}，${acc.currency}${initNote}）`;
     }
     if (action === 'delete') {
       const name = this.firstTarget(intent);
@@ -379,8 +385,13 @@ export class AiExecutor {
         changed.push(`类型→${newType === 'cash' ? '现金' : '银行'}`);
       }
     }
+    const newInit = Number(intent.fields['initialBalance'] || 0);
+    if (newInit > 0) {
+      acc.openingBalance = Math.round(newInit * 100);
+      changed.push(`初始余额→${newInit} 元`);
+    }
     if (changed.length === 0) {
-      return `未识别到要修改的账户字段（改名/改货币/改类型）`;
+      return `未识别到要修改的账户字段（改名/改货币/改类型/初始余额）`;
     }
     await this.repository.updateAccount(acc);
     return `已修改账户「${name}」：${changed.join('，')}`;

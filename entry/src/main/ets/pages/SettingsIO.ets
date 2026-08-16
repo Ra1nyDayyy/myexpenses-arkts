@@ -1,6 +1,7 @@
 import { promptAction } from '@kit.ArkUI';
 import { SettingsService, PREF_KEY } from '../database/SettingsService';
 import { DataManager } from '../database/DataManager';
+import { CategorySeparatorDialog } from '../components/CategorySeparatorDialog';
 
 /**
  * 导入/导出设置页面：对应 Android preferences_io.xml
@@ -11,6 +12,7 @@ export struct SettingsIO {
   private pathStack: NavPathStack = new NavPathStack();
   private settings: SettingsService = SettingsService.getInstance();
   private dataManager: DataManager = DataManager.getInstance();
+  private separatorDialog: CustomDialogController | null = null;
   
   @State csvSplitCategories: boolean = false;
   @State csvCategorySeparator: string = ' > ';
@@ -205,14 +207,20 @@ export struct SettingsIO {
   }
 
   private showCategorySeparatorDialog(): void {
-    promptAction.showDialog({
-      title: '类别分隔符',
-      message: `当前分隔符: "${this.csvCategorySeparator}"\n\n用于连接主类别和子类别的字符`,
-      buttons: [
-        { text: '取消', color: '#666666' },
-        { text: '确定', color: '#0A59F7' }
-      ]
+    this.separatorDialog = new CustomDialogController({
+      builder: CategorySeparatorDialog({
+        currentValue: this.csvCategorySeparator,
+        onResult: (value: string) => {
+          this.csvCategorySeparator = value;
+          this.settings.setString(PREF_KEY.CSV_CATEGORY_SEPARATOR, value);
+        },
+        onClose: () => {
+          this.separatorDialog?.close();
+        }
+      }),
+      autoCancel: true,
+      alignment: DialogAlignment.Center
     });
-    // TODO: 实现TextInput对话框来编辑分隔符
+    this.separatorDialog.open();
   }
 }

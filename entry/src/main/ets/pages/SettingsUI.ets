@@ -1,5 +1,6 @@
 import { promptAction } from '@kit.ArkUI';
 import { SettingsService, PREF_KEY } from '../database/SettingsService';
+import { OptionSelectDialog } from '../components/OptionSelectDialog';
 
 /**
  * 界面设置页面：对应 Android preferences_ui.xml
@@ -9,6 +10,7 @@ import { SettingsService, PREF_KEY } from '../database/SettingsService';
 export struct SettingsUI {
   private pathStack: NavPathStack = new NavPathStack();
   private settings: SettingsService = SettingsService.getInstance();
+  private optionDialog: CustomDialogController | null = null;
   @State theme: number = 0; // 0=跟随系统 1=浅色 2=深色
   @State fontSize: number = 0; // 字体大小调整
   @State language: string = 'default';
@@ -286,69 +288,60 @@ export struct SettingsUI {
   }
 
   private showThemeDialog(): void {
-    promptAction.showDialog({
-      title: '主题',
-      message: '请选择主题',
-      buttons: [
-        { text: '跟随系统', color: '#0A59F7' },
-        { text: '浅色', color: '#0A59F7' },
-        { text: '深色', color: '#0A59F7' }
-      ]
-    }).then(async (result) => {
-      if (result.index !== undefined && result.index >= 0 && result.index <= 2) {
-        this.theme = result.index;
-        await this.settings.setNumber(PREF_KEY.THEME, this.theme);
+    this.openOptionDialog('主题', ['0', '1', '2'], ['跟随系统', '浅色', '深色'], String(this.theme), (key: string) => {
+      const val = Number(key);
+      if (val >= 0 && val <= 2) {
+        this.theme = val;
+        this.settings.setNumber(PREF_KEY.THEME, val);
         promptAction.showToast({ message: '主题已更改，重启应用生效' });
       }
     });
   }
 
   private showFontSizeDialog(): void {
-    promptAction.showDialog({
-      title: '字体大小',
-      message: '调整应用内字体大小',
-      buttons: [
-        { text: '缩小', color: '#0A59F7' },
-        { text: '默认', color: '#0A59F7' },
-        { text: '放大', color: '#0A59F7' }
-      ]
-    }).then(async (result) => {
-      if (result.index !== undefined) {
-        this.fontSize = result.index - 1; // -1, 0, 1
-        await this.settings.setNumber(PREF_KEY.FONT_SIZE, this.fontSize);
-        promptAction.showToast({ message: '字体大小已更改' });
-      }
+    this.openOptionDialog('字体大小', ['-1', '0', '1'], ['缩小', '默认', '放大'], String(this.fontSize), (key: string) => {
+      const val = Number(key);
+      this.fontSize = val;
+      this.settings.setNumber(PREF_KEY.FONT_SIZE, val);
+      promptAction.showToast({ message: '字体大小已更改' });
     });
   }
 
   private showLanguageDialog(): void {
-    promptAction.showDialog({
-      title: '语言',
-      message: '选择应用语言',
-      buttons: [
-        { text: '跟随系统', color: '#0A59F7' },
-        { text: '简体中文', color: '#0A59F7' },
-        { text: 'English', color: '#0A59F7' }
-      ]
-    }).then(async (result) => {
-      if (result.index !== undefined) {
-        const langs = ['default', 'zh_CN', 'en'];
-        this.language = langs[result.index];
-        await this.settings.setString(PREF_KEY.LANGUAGE, this.language);
-        promptAction.showToast({ message: '语言已更改，重启应用生效' });
-      }
+    this.openOptionDialog('语言', ['default', 'zh_CN', 'en'], ['跟随系统', '简体中文', 'English'], this.language, (key: string) => {
+      this.language = key;
+      this.settings.setString(PREF_KEY.LANGUAGE, key);
+      promptAction.showToast({ message: '语言已更改，重启应用生效' });
     });
   }
 
   private showStartScreenDialog(): void {
-    promptAction.showDialog({
-      title: '启动屏幕',
-      message: '选择应用启动时显示的页面',
-      buttons: [
-        { text: '上次访问', color: '#0A59F7' },
-        { text: '交易', color: '#0A59F7' },
-        { text: '账户', color: '#0A59F7' }
-      ]
+    this.openOptionDialog('启动屏幕', ['last', 'transactions', 'accounts'], ['上次访问', '交易', '账户'], 'last', (key: string) => {
+      this.settings.setString('start_screen', key);
+      promptAction.showToast({ message: '启动屏幕已设置' });
     });
+  }
+
+
+  /** 通用选项对话框（CustomDialog 模式，避免 promptAction 多按钮 index 失效） */
+  private openOptionDialog(title: string, optionKeys: string[], optionLabels: string[], selected: string,
+    onSelect: (key: string) => void): void {
+    this.optionDialog = new CustomDialogController({
+      builder: OptionSelectDialog({
+        title: title,
+        optionKeys: optionKeys,
+        optionLabels: optionLabels,
+        selectedKey: selected,
+        onResult: (key: string) => {
+          onSelect(key);
+        },
+        onClose: () => {
+          this.optionDialog?.close();
+        }
+      }),
+      autoCancel: true,
+      alignment: DialogAlignment.Center
+    });
+    this.optionDialog.open();
   }
 }
