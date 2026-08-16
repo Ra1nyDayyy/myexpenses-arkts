@@ -939,6 +939,7 @@ struct Index {
               this.selectedAccountId = id;
               this.activeFilterType = -1;
               this.selectedTab = 1;
+              this.refreshTransactions(id);
             }
           })
             .width('100%')
@@ -1096,7 +1097,7 @@ struct Index {
             account: this.currentAccount() || new Account(),
             transactions: this.currentTransactions,
             grouping: 3,
-            selectionMode: this.isSelectionMode,
+            selectionMode: $isSelectionMode,
             showAccount: this.isAggregate(),
             selectedIds: this.selectedTransactionIds,
             onToggleStatus: (id: number) => {
@@ -1776,6 +1777,8 @@ struct Index {
         action: () => {
           this.grouping = groups[i];
           this.settings.setNumber(PREF_KEY.GROUPING, i);
+          // 强制刷新账户列表分组展示（AccountListPage @Prop 更新）
+          this.accounts = [...this.accounts];
         }
       } as MenuElement);
     }
@@ -1790,7 +1793,7 @@ struct Index {
 
   /** 打开排序方式对话框（对齐安卓 AccountListDisplayConfigurationDialogFragment 居中模态框） */
   private showSortDialog(): void {
-    const dialog = new CustomDialogController({
+    this.sortDialog = new CustomDialogController({
       builder: SortDialog({
         sortByFlagFirst: this.sortByFlagFirst,
         currentSort: this.accountSortBy,
@@ -1798,14 +1801,13 @@ struct Index {
           this.sortByFlagFirst = flagFirst;
           this.accountSortBy = sortBy;
           this.applyAccountSort();
+          this.sortDialog?.close();
         }
       }),
       autoCancel: true,
-      alignment: DialogAlignment.Center,
-      customStyle: true,
-      cornerRadius: 16
+      alignment: DialogAlignment.Center
     });
-    dialog.open();
+    this.sortDialog.open();
   }
 
   /**
@@ -2617,6 +2619,8 @@ struct Index {
   }
 
   private detailDialog: CustomDialogController | null = null;
+  /** 账户排序对话框（成员变量持有，确保 SortDialog 内 controller.close() 生效） */
+  private sortDialog: CustomDialogController | null = null;
 
   /**
    * 显示交易只读详情弹窗（对齐安卓 TransactionDetailFragment）
@@ -2684,6 +2688,9 @@ struct Index {
       promptAction.showToast({ message: '已删除' });
       // 刷新当前视图的交易列表与汇总
       await this.refreshTransactions(this.selectedAccountId);
+      // 刷新账户余额（fillAccountSums），保证 Total/账户行余额即时更新
+      this.accounts = await this.repository.getAccounts();
+      this.accounts = this.sortAccounts(this.accounts);
     } catch (e) {
       console.error('删除交易失败: ' + JSON.stringify(e));
       promptAction.showToast({ message: '删除失败' });
@@ -2814,11 +2821,36 @@ struct Index {
   }
 
   private async deleteAccount(id: number): Promise<void> {
-    await this.repository.deleteAccount(id);
-    if (this.selectedAccountId === id) {
-      this.selectedAccountId = -1;
-    }
-    await this.loadData();
+    const acc = this.accounts.find((a: Account) => a.id === id);
+    const accLabel = acc ? acc.label : '该账户';
+    const txList = await this.repository.getTransactions(id);
+    const txCount = txList.length;
+    // 删除账户必须确认（安全）；有交易账户提示会同时删除其交易，避免孤儿数据
+    const message = txCount > 0
+      ? `账户「${accLabel}」下有 ${txCount} 笔交易。删除账户将同时删除这些交易，此操作不可恢复。确定删除吗？`
+      : `确定删除账户「${accLabel}」吗？此操作不可恢复。`;
+    promptAction.showDialog({
+      title: '删除账户',
+      message: message,
+      buttons: [
+        { text: '取消', color: '#808080' },
+        { text: '删除', color: '#E53935' }
+      ]
+    }).then(async (result) => {
+      if (result.index === 1) {
+        if (txCount > 0) {
+          const ids = txList.map((t: Transaction) => t.id);
+          await this.repository.deleteTransactionsByIds(ids);
+        }
+        await this.repository.deleteAccount(id);
+        if (this.selectedAccountId === id) {
+          this.selectedAccountId = -1;
+        }
+        await this.loadData();
+        promptAction.showToast({ message: `已删除账户「${accLabel}」` });
+      }
+    }).catch(() => {
+    });
   }
 
   private async toggleSealed(id: number): Promise<void> {

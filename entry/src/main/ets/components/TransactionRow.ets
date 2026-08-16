@@ -10,6 +10,8 @@ import { currencyByCode } from '../model/CurrencyUnit';
 export struct TransactionRow {
   transaction: Transaction = new Transaction();
   @Prop selected: boolean = false;
+  /** 多选模式：禁用操作菜单 bindMenu，避免点击行弹出菜单与多选冲突（@Link 确保 List 懒加载下同步刷新） */
+  @Link selectionMode: boolean;
   // 聚合模式（全部账户）：显示所属账户名（对齐安卓 transaction.accountLabel 行）
   @Prop showAccount: boolean = false;
   // 操作菜单项（点击行时在行下方弹出，对齐安卓 PopupMenu）：空数组表示不弹菜单（如选择模式）
@@ -194,8 +196,8 @@ export struct TransactionRow {
     .margin({ left: 12, right: 12, bottom: 8 })
     .borderRadius($r('app.float.native_card_radius'))
     .backgroundColor(this.selected ? $r('app.color.surfaceBrandSoft') : $r('app.color.surfacePrimary'))
-    // 操作菜单锚定在交易行下方（对齐安卓 PopupMenu，替代底部 ActionSheet）
-    .bindMenu(this.menuItems, { placement: Placement.Bottom })
+    // 操作菜单锚定在交易行下方（对齐安卓 PopupMenu）；多选模式 menuItems 为空数组避免弹菜单冲突
+    .bindMenu(this.selectionMode ? [] : this.menuItems, { placement: Placement.Bottom })
     .onClick(() => {
       this.onItemClick(this.transaction.id);
     })

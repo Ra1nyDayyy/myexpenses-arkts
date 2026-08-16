@@ -1,8 +1,9 @@
 import { Account } from '../model/Account';
 import { Category } from '../model/Category';
 import { Transaction } from '../model/Transaction';
+import { Template } from '../model/SupportEntities';
 import { Repository } from '../database/Repository';
-import { AiIntent, AiService } from '../database/AiService';
+import { AiIntent, AiService, AiUnderstandResult } from '../database/AiService';
 import { AiExecutionResult, AiExecutor } from '../database/AiExecutor';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { audio } from '@kit.AudioKit';
@@ -26,17 +27,51 @@ import { router, promptAction } from '@kit.ArkUI';
 import { formatMoney } from '../model/Money';
 import { currencyByCode } from '../model/CurrencyUnit';
 import { formatDate } from '../common/FormatUtils';
+import { fileIo as fs } from '@kit.CoreFileKit';
+import { util } from '@kit.ArkTS';
 
 interface InsightSnapshot {
   overview: InsightSummary;
   trend: MonthlyInsight[];
 }
 
-/** 对话消息：role user/ai，kind text（普通文本）/bill（待确认账单预览） */
+/** 对话消息：role user/ai，kind text（普通文本）/bill（待确认账单预览）/confirm（修改删除确认）/plan（多步骤执行计划）/thinking（大模型思考过程） */
 interface ChatMessage {
   role: string;
   text: string;
   kind: string;
+  /** confirm 消息携带的操作快照（避免全局 pendingAction 被后续输入覆盖导致错乱） */
+  action?: PendingAction;
+  /** plan 消息携带的多步骤执行计划 */
+  planSteps?: AiIntent[];
+  /** 多步骤执行上下文 ID（危险步骤确认后据此恢复执行） */
+  stepCtxId?: number;
+  /** 危险步骤确认消息对应步骤号 */
+  confirmStepNo?: number;
+  /** thinking 消息：是否仍在思考（true=进行中，false=已输出思考内容） */
+  thinkingDone?: boolean;
+}
+
+/** 多步骤执行上下文（对话内确认机制：保存计划与游标，危险步骤确认后恢复） */
+interface StepContext {
+  id: number;
+  steps: AiIntent[];
+  index: number;
+}
+
+/** 危险步骤确认后恢复执行上下文 */
+interface StepResumeContext {
+  ctxId: number;
+  nextIndex: number;
+  actionType: string;
+}
+
+/** 对话内待确认操作（修改/删除） */
+interface PendingAction {
+  type: string; // delete | edit
+  target: Transaction;
+  fields: Record<string, string | number>;
+  stepNo?: number;
 }
 
 /**
@@ -74,6 +109,15 @@ export struct AiAssistant {
   /** 对话式消息列表（ChatGPT 风格） */
   @State chatMessages: ChatMessage[] = [];
   @State chatInput: string = '';
+  /** 待确认操作（修改/删除，对话内确认，不用系统弹窗） */
+  @State pendingAction: PendingAction | null = null;
+  /** 多步骤执行上下文（对话内确认机制，保存计划与游标） */
+  @State stepCtx: StepContext | null = null;
+  /** 危险步骤确认后恢复执行上下文（confirm 按钮回调使用） */
+  private stepResume: StepResumeContext | null = null;
+  /** 多笔候选（歧义消解：用户点击选择） */
+  @State candidateList: Transaction[] = [];
+  @State candidateType: string = 'delete';
   /** 待发送附件（图片 URI 列表） */
   @State chatAttachments: string[] = [];
   /** 语音输入（麦克风）状态 */
@@ -251,16 +295,84 @@ export struct AiAssistant {
     if (intent.domain !== 'transaction' || intent.action !== 'create') {
       return intent;
     }
+    // 账户：优先按名称映射（大模型输出用户可见名称），其次按数字 id，最后默认
+    const accountName = String(intent.fields['account'] || '');
     const requestedAccountId = Number(intent.fields['accountId'] || 0);
-    const account = requestedAccountId > 0 ?
-      this.accounts.find((item: Account) => item.id === requestedAccountId) : this.defaultAccount();
-    if (account) {
-      intent.fields['accountId'] = account.id;
+    let account: Account | null = null;
+    if (accountName.length > 0) {
+      account = this.accounts.find((item: Account) => item.label.includes(accountName)) || null;
+      // 指定了名称但找不到：不静默使用默认账户（交给 UI 提示"指定账户不存在"）
+      if (account) {
+        intent.fields['accountId'] = account.id;
+      } else {
+        intent.fields['accountId'] = 0;
+      }
+    } else if (requestedAccountId > 0) {
+      account = this.accounts.find((item: Account) => item.id === requestedAccountId) || null;
+      if (account) {
+        intent.fields['accountId'] = account.id;
+      } else {
+        intent.fields['accountId'] = 0;
+      }
+    } else {
+      account = this.defaultAccount();
+      if (account) {
+        intent.fields['accountId'] = account.id;
+      }
     }
-    if (!intent.fields['date']) {
+    // 分类：按名称映射
+    const categoryName = String(intent.fields['category'] || '');
+    if (categoryName.length > 0) {
+      const cat = this.categories.find((item: Category) => item.label.includes(categoryName));
+      if (cat) {
+        intent.fields['categoryId'] = cat.id;
+      }
+    }
+    // 日期：空则今天；相对词解析为时间戳
+    const rawDate = intent.fields['date'];
+    if (rawDate === undefined || rawDate === '' || rawDate === 0) {
       intent.fields['date'] = Math.floor(Date.now() / 1000);
+    } else if (typeof rawDate === 'string' && !/^\d+$/.test(rawDate)) {
+      intent.fields['date'] = this.parseRelativeDate(rawDate);
+    } else {
+      intent.fields['date'] = Number(rawDate);
     }
     return intent;
+  }
+
+  /** 相对日期解析（今天/昨天/前天/上周/上月/晚上等 → 秒时间戳） */
+  private parseRelativeDate(raw: string): number {
+    const now = new Date();
+    const startOfDay = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const toTs = (d: Date): number => Math.floor(d.getTime() / 1000);
+    const text = raw.trim();
+    if (text.includes('昨天') || text.includes('昨晚')) {
+      const d = startOfDay(now); d.setDate(d.getDate() - 1); return toTs(d);
+    }
+    if (text.includes('前天')) {
+      const d = startOfDay(now); d.setDate(d.getDate() - 2); return toTs(d);
+    }
+    if (text.includes('上周') || text.includes('上个星期')) {
+      const d = startOfDay(now); d.setDate(d.getDate() - 7); return toTs(d);
+    }
+    if (text.includes('上个月') || text.includes('上月')) {
+      const d = new Date(now.getFullYear(), now.getMonth() - 1, 1); return toTs(d);
+    }
+    if (text.includes('今天') || text.includes('今晚') || text.includes('晚上') || text.includes('刚刚') || text.includes('刚才')) {
+      return toTs(startOfDay(now));
+    }
+    // 8月10号 / 8/10 形式
+    const m = text.match(/(\d{1,2})月(\d{1,2})日|\d{1,2}月\d{1,2}|(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (m) {
+      if (m[3] && m[4] && m[5]) {
+        return toTs(new Date(Number(m[3]), Number(m[4]) - 1, Number(m[5])));
+      }
+      const month = Number(m[1]);
+      const day = Number(m[2]);
+      const year = month > now.getMonth() + 1 ? now.getFullYear() - 1 : now.getFullYear();
+      return toTs(new Date(year, month - 1, day));
+    }
+    return toTs(startOfDay(now));
   }
 
   private friendlyError(error: Object): string {
@@ -274,6 +386,15 @@ export struct AiAssistant {
   /** 选择图片附件（photoAccessHelper 相册选择） */
   private async pickAttachment(): Promise<void> {
     try {
+      // 读取相册图片需要 READ_IMAGEVIDEO 权限（动态申请，用于发送给大模型理解）
+      const context = getContext(this) as common.UIAbilityContext;
+      const atManager = abilityAccessCtrl.createAtManager();
+      try {
+        await atManager.requestPermissionsFromUser(context,
+          ['ohos.permission.READ_IMAGEVIDEO'] as Permissions[]);
+      } catch (permErr) {
+        hilog.warn(0x0000, 'AiAssistant', 'request READ_IMAGEVIDEO failed: ' + JSON.stringify(permErr));
+      }
       const photoPicker = new photoAccessHelper.PhotoViewPicker();
       const selectResult = await photoPicker.select({
         MIMEType: photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE,
@@ -285,6 +406,41 @@ export struct AiAssistant {
     } catch (e) {
       promptAction.showToast({ message: '选择附件失败：' + JSON.stringify(e) });
     }
+  }
+
+  /** 读取图片文件并转为 base64 data-url（供多模态请求发给大模型） */
+  private async attachmentToDataUrl(uri: string): Promise<string> {
+    try {
+      const file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
+      const stat = fs.statSync(file.fd);
+      const size = stat.size;
+      if (size <= 0 || size > 20 * 1024 * 1024) {
+        fs.closeSync(file);
+        return '';
+      }
+      const buf = new ArrayBuffer(size);
+      fs.readSync(file.fd, buf);
+      fs.closeSync(file);
+      const base64Helper = new util.Base64Helper();
+      const base64 = base64Helper.encodeToString(new Uint8Array(buf));
+      // photoAccessHelper 返回的 URI 一般为 image/jpeg，统一按 jpeg 处理
+      return `data:image/jpeg;base64,${base64}`;
+    } catch (e) {
+      hilog.error(0x0000, 'AiAssistant', 'attachmentToDataUrl failed: ' + JSON.stringify(e));
+      return '';
+    }
+  }
+
+  /** 将当前待发送图片附件转为 data-url 数组（失败/超大的忽略） */
+  private async attachmentsToDataUrls(): Promise<string[]> {
+    const urls: string[] = [];
+    for (const uri of this.chatAttachments) {
+      const dataUrl = await this.attachmentToDataUrl(uri);
+      if (dataUrl) {
+        urls.push(dataUrl);
+      }
+    }
+    return urls;
   }
 
   /** 开始录音（AudioCapturer 采集麦克风音频） */
@@ -419,17 +575,43 @@ export struct AiAssistant {
 
   /** 对话式发送：用户消息 → AI 识别 → 待确认账单 / 洞察回复 */
   private async sendChatMessage(): Promise<void> {
-    const text = this.chatInput.trim();
-    if (text.length === 0 || this.aiLoading) {
+    // 允许纯图片发送（无文字时给默认提示，让大模型看图识别记账内容）
+    let text = this.chatInput.trim();
+    if ((text.length === 0 && this.chatAttachments.length === 0) || this.aiLoading) {
       return;
     }
-    this.chatMessages = [...this.chatMessages, { role: 'user', text: text, kind: 'text' }];
+    const hasImage = this.chatAttachments.length > 0;
+    if (text.length === 0 && hasImage) {
+      text = '请识别图片内容，如果图片是一张账单或小票，请按其中的金额和用途记账；否则说明图片内容。';
+    }
+    this.chatMessages = [...this.chatMessages, { role: 'user', text: hasImage ? '📷 图片' + (text.length > 0 ? '：' + text : '') : text, kind: 'text' }];
     this.chatInput = '';
     this.aiLoading = true;
     this.aiIntent = null;
+    // 用户发出新指令：放弃此前未确认的修改/删除操作，避免旧 confirm 缩成一行且不可操作
+    this.expirePendingConfirmBubbles();
     try {
-      // 全程调用大模型识别意图（领域边界/拒绝/账户创建均由大模型判断）
-      const intent = await AiService.getInstance().understand(text);
+      // 将待发送图片附件转为 base64（多模态请求），供大模型理解图片内容
+      const imageDataUrls = await this.attachmentsToDataUrls();
+      if (this.chatAttachments.length > 0 && imageDataUrls.length === 0) {
+        this.pushAiText('图片读取失败或超过大小限制（20MB），已忽略图片，仅按文字理解。');
+      }
+      // 推送"思考中"气泡（大模型推理期间展示）
+      const thinkingId = this.pushThinking();
+      let understandResult: AiUnderstandResult | null = null;
+      try {
+        // 开启思考模式调用大模型识别意图，并实时回调思考过程
+        understandResult = await AiService.getInstance().understandWithThinking(
+          text, imageDataUrls, (t: string) => {
+            if (t && t.trim().length > 0) {
+              this.updateThinking(thinkingId, t);
+            }
+          });
+      } finally {
+        // 请求结束移除思考气泡（无论成功失败）
+        this.removeThinking(thinkingId);
+      }
+      const intent = understandResult.intent;
       // 无关请求（大模型判定 action=refuse）：明确拒绝
       if (intent.action === 'refuse') {
         this.pushAiText('我只用于记账和记账分析相关操作，无法处理与此无关的问题。');
@@ -438,6 +620,11 @@ export struct AiAssistant {
       const validation = AiIntentValidator.validate(intent);
       if (!validation.valid) {
         this.pushAiText(validation.error);
+        return;
+      }
+      // 多步骤任务：展示执行计划 → 确认 → 逐条执行（写操作需整体确认，危险步骤逐条确认）
+      if (intent.steps && intent.steps.length > 0) {
+        this.executeSteps(intent.steps);
         return;
       }
       // 创建账户（account create）：直接执行并回复
@@ -449,9 +636,137 @@ export struct AiAssistant {
         }
         return;
       }
-      // 查询/筛选/排序 → 洞察回复
+      // 账户查询/修改/删除：通过执行器处理（删除危险操作需确认）
+      if (intent.domain === 'account') {
+        if (intent.action === 'delete') {
+          // 删除账户：对话内确认（危险操作）
+          const targetName = intent.targets.length > 0 ? intent.targets[0] : String(intent.fields['name'] || '');
+          const accounts = await this.repository.getAccounts();
+          const acc = accounts.find((a: Account) => a.label.includes(targetName));
+          if (!acc) {
+            this.pushAiText(`未找到账户「${targetName}」。`);
+            return;
+          }
+          const txCount = (await this.repository.getTransactions(acc.id)).length;
+          const f: Record<string, string | number> = {};
+          f['accountId'] = acc.id;
+          f['comment'] = targetName;
+          f['amount'] = txCount;
+          const accDelAction: PendingAction = {
+            type: 'accountDelete',
+            target: new Transaction(),
+            fields: f
+          };
+          this.pendingAction = accDelAction;
+          this.chatMessages = [...this.chatMessages, {
+            role: 'ai', text: '', kind: 'confirm',
+            action: accDelAction
+          }];
+          return;
+        }
+        const execResult = await AiExecutor.getInstance().execute(intent);
+        this.pushAiText(execResult.message);
+        if (execResult.ok && intent.action === 'edit') {
+          this.onDataChanged();
+        }
+        return;
+      }
+      // 删除交易：唯一定位 + 明确确认（危险写操作）
+      if (intent.domain === 'transaction' && intent.action === 'delete') {
+        const matches = await this.findTransactionsByIntent(intent);
+        if (matches.length === 0) {
+          this.pushAiText('未找到匹配的交易，请补充备注或金额。');
+          return;
+        }
+        if (matches.length > 1) {
+          // 多笔候选：展示详细列表（日期/账户/分类/金额/备注），用户点击选择
+          this.candidateList = matches;
+          this.candidateType = 'delete';
+          this.chatMessages = [...this.chatMessages, { role: 'ai', text: '', kind: 'candidates' }];
+          return;
+        }
+        const target = matches[0];
+        // 对话内确认（不用系统弹窗）：设置待确认操作并推送确认气泡
+        this.pendingAction = { type: 'delete', target: target, fields: {} };
+        this.chatMessages = [...this.chatMessages, {
+          role: 'ai', text: '', kind: 'confirm',
+          action: { type: 'delete', target: target, fields: {} }
+        }];
+        return;
+      }
+      // 修改交易：唯一定位 + 对话内预览确认
+      if (intent.domain === 'transaction' && intent.action === 'edit') {
+        const matches = await this.findTransactionsByIntent(intent);
+        if (matches.length === 0) {
+          this.pushAiText('未找到匹配的交易，请补充备注或金额。');
+          return;
+        }
+        if (matches.length > 1) {
+          // 多笔候选：展示详细列表，用户点击选择
+          this.candidateList = matches;
+          this.candidateType = 'edit';
+          this.chatMessages = [...this.chatMessages, { role: 'ai', text: '', kind: 'candidates' }];
+          return;
+        }
+        const target = matches[0];
+        const changes: string[] = [];
+        const newAmount = Number(intent.fields['amount'] || 0);
+        if (newAmount > 0) {
+          changes.push(`金额改为 ${newAmount} 元`);
+        }
+        const newComment = String(intent.fields['comment'] || '');
+        if (newComment && newComment !== target.comment) {
+          changes.push(`备注改为「${newComment}」`);
+        }
+        if (changes.length === 0) {
+          this.pushAiText('未识别到要修改的字段（金额/备注/分类/账户/日期）。');
+          return;
+        }
+        // 对话内确认（不用系统弹窗）
+        this.pendingAction = { type: 'edit', target: target, fields: intent.fields };
+        this.chatMessages = [...this.chatMessages, {
+          role: 'ai', text: '', kind: 'confirm',
+          action: { type: 'edit', target: target, fields: intent.fields }
+        }];
+        return;
+      }
+      // 模板操作：通过执行器处理（删除/使用模板前确认）
+      if (intent.domain === 'template') {
+        if (intent.action === 'delete' || intent.action === 'use') {
+          const tplName = intent.targets.length > 0 ? intent.targets[0] : '';
+          const templates = await this.repository.getTemplates();
+          const tpl = templates.find((t: Template) => t.title.includes(tplName));
+          if (!tpl) {
+            this.pushAiText(`未找到模板「${tplName}」。`);
+            return;
+          }
+          const f: Record<string, string | number> = {};
+          f['templateId'] = tpl.id;
+          f['comment'] = tpl.title;
+          f['amount'] = Math.abs(tpl.amount);
+          const tplAction: PendingAction = {
+            type: intent.action === 'delete' ? 'templateDelete' : 'templateUse',
+            target: new Transaction(),
+            fields: f
+          };
+          this.pendingAction = tplAction;
+          this.chatMessages = [...this.chatMessages, {
+            role: 'ai', text: '', kind: 'confirm',
+            action: tplAction
+          }];
+          return;
+        }
+        const execResult = await AiExecutor.getInstance().execute(intent);
+        this.pushAiText(execResult.message);
+        if (execResult.ok && intent.action !== 'query') {
+          this.onDataChanged();
+        }
+        return;
+      }
+      // 查询/筛选/排序 → 精确查询（按账户/分类/时间/金额过滤）或洞察总览
       if (intent.action === 'query' || intent.action === 'filter' || intent.action === 'sort') {
-        this.pushAiText(this.insightReply());
+        const precise = await this.preciseQueryReply(intent);
+        this.pushAiText(precise);
         return;
       }
       // 记账（create）→ 待确认账单
@@ -475,9 +790,205 @@ export struct AiAssistant {
     }
   }
 
+  /** 按意图匹配交易（备注关键字/金额），返回候选列表 */
+  private async findTransactionsByIntent(intent: AiIntent): Promise<Transaction[]> {
+    const keyword = intent.targets && intent.targets.length > 0 ?
+      intent.targets[0] : String(intent.fields['comment'] || '');
+    const amount = Number(intent.fields['amount'] || 0);
+    const accounts = await this.repository.getAccounts();
+    const result: Transaction[] = [];
+    for (let acc of accounts) {
+      const txList = await this.repository.getTransactions(acc.id);
+      for (let t of txList) {
+        if (keyword && t.comment.includes(keyword)) {
+          result.push(t);
+        } else if (amount > 0 && Math.abs(t.amount) === Math.round(amount * 100)) {
+          result.push(t);
+        }
+      }
+    }
+    return result;
+  }
+
+  /** 多步骤任务：对话内展示执行计划 → 用户点执行 → 逐条执行（不使用系统弹窗） */
+  private executeSteps(steps: AiIntent[]): void {
+    const ctxId = Date.now();
+    this.stepCtx = { id: ctxId, steps: steps, index: 0 };
+    this.chatMessages = [...this.chatMessages, {
+      role: 'ai', text: '', kind: 'plan', planSteps: steps, stepCtxId: ctxId
+    }];
+  }
+
+  /** 计划卡片点"执行"：从指定游标开始逐条执行 */
+  private async runStepsFromIndex(ctxId: number, startIndex: number): Promise<void> {
+    const ctx = this.stepCtx;
+    if (!ctx || ctx.id !== ctxId) {
+      this.pushAiText('该执行计划已失效，请重新描述。');
+      return;
+    }
+    const steps = ctx.steps;
+    let i = startIndex;
+    while (i < steps.length) {
+      const s = steps[i];
+      try {
+        const stepNo = i + 1;
+        if (s.action === 'query' || s.action === 'filter' || s.action === 'sort') {
+          // 查询前刷新数据，确保包含此前写操作的结果
+          await this.analyze();
+          const lastQuery = await this.preciseQueryReply(s);
+          this.pushAiText(`第${stepNo}步：${lastQuery}`);
+          i++;
+          continue;
+        }
+        if (s.domain === 'account' && s.action === 'create') {
+          const r = await AiExecutor.getInstance().execute(s);
+          this.pushAiText(`第${stepNo}步：${r.message}`);
+          i++;
+          continue;
+        }
+        if (s.action === 'delete' || s.action === 'edit') {
+          // 危险步骤：对话内逐条确认（不用系统弹窗）；确认后恢复执行
+          const confirmed = await this.confirmDangerStepInChat(s, stepNo, ctxId, i);
+          if (!confirmed) {
+            this.pushAiText(`第${stepNo}步未执行（已取消/未匹配），剩余步骤已停止。`);
+            this.stepCtx = null;
+            this.onDataChanged();
+            return;
+          }
+          i++;
+          continue;
+        }
+        if (s.action === 'create') {
+          const prepared = this.prepareCreateIntent(s);
+          const v2 = AiIntentValidator.validate(prepared);
+          if (!v2.valid) {
+            this.pushAiText(`第${stepNo}步失败：${v2.error}`);
+            break;
+          }
+          if (!this.intentAccount(prepared)) {
+            this.pushAiText(`第${stepNo}步失败：指定账户不存在，请重新描述。`);
+            break;
+          }
+          const plan = this.confirmedPlan(prepared);
+          if (!plan) {
+            this.pushAiText(`第${stepNo}步失败：无法生成执行计划。`);
+            break;
+          }
+          const r = await AiExecutor.getInstance().executeConfirmed(plan);
+          if (!r.ok || !r.wrote) {
+            this.pushAiText(`第${stepNo}步失败：${r.message}`);
+            break;
+          }
+          this.pushAiText(`第${stepNo}步：${r.message}`);
+          i++;
+          continue;
+        }
+        this.pushAiText(`第${stepNo}步暂不支持：${s.domain}/${s.action}`);
+        break;
+      } catch (e) {
+        this.pushAiText(`第${i + 1}步异常：${JSON.stringify(e)}`);
+        break;
+      }
+    }
+    // 全部执行完成
+    this.stepCtx = null;
+    this.onDataChanged();
+  }
+
+  /**
+   * 多步骤中危险步骤（删除/修改）对话内确认。
+   * 确认后推送 confirm 气泡挂起执行，用户点击确认/取消时通过 confirmStepCtx 恢复。
+   * 返回 true 表示已挂起等待用户确认（执行由 confirmPendingAction 继续），
+   * 返回 false 表示未匹配/多匹配已直接处理（无需等待）。
+   */
+  private confirmDangerStepInChat(step: AiIntent, stepNo: number, ctxId: number, index: number): Promise<boolean> {
+    return new Promise<boolean>(async (resolve) => {
+      const matches = await this.findTransactionsByIntent(step);
+      if (matches.length === 0) {
+        this.pushAiText(`第${stepNo}步：未找到匹配交易，跳过。`);
+        resolve(true);
+        return;
+      }
+      if (matches.length > 1) {
+        const labels = matches.map((t: Transaction) =>
+          `${new Date(t.date * 1000).toISOString().slice(0, 10)} ${t.comment || '无备注'} ${formatMoney(Math.abs(t.amount), 2)}`).join('\n');
+        this.pushAiText(`第${stepNo}步：找到多笔匹配，跳过并请补充信息：\n${labels}`);
+        resolve(true);
+        return;
+      }
+      const target = matches[0];
+      const isDelete = step.action === 'delete';
+      const f: Record<string, string | number> = {};
+      if (!isDelete) {
+        const newAmount = Number(step.fields['amount'] || 0);
+        if (newAmount > 0) { f['amount'] = newAmount; }
+        const newComment = String(step.fields['comment'] || '');
+        if (newComment) { f['comment'] = newComment; }
+      }
+      const stepConfirmAction: PendingAction = {
+        type: isDelete ? 'delete' : 'edit',
+        target: target,
+        fields: f,
+        stepNo: stepNo
+      };
+      // 记录确认后恢复上下文（继续执行 index+1）
+      this.stepResume = { ctxId: ctxId, nextIndex: index + 1, actionType: stepConfirmAction.type };
+      this.pendingAction = stepConfirmAction;
+      this.chatMessages = [...this.chatMessages, {
+        role: 'ai', text: '', kind: 'confirm',
+        action: stepConfirmAction,
+        stepCtxId: ctxId,
+        confirmStepNo: stepNo
+      }];
+      // 挂起等待用户确认（confirmPendingAction 中恢复）
+      resolve(true);
+    });
+  }
+
+
+  /** 步骤摘要 */
+  private stepSummary(step: AiIntent): string {
+    const domainLabel = step.domain === 'account' ? '账户' : (step.domain === 'template' ? '模板' : '交易');
+    const actionLabel = step.action === 'create' ? '创建' :
+      (step.action === 'edit' ? '修改' :
+      (step.action === 'delete' ? '删除' :
+      (step.action === 'query' ? '查询' :
+      (step.action === 'filter' ? '筛选' : '排序'))));
+    const detail = step.action === 'create' ?
+      `${step.fields['amount'] || ''} 元${step.fields['comment'] ? '（' + step.fields['comment'] + '）' : ''}` :
+      (step.targets.length > 0 ? step.targets.join('、') : '');
+    return `${domainLabel}·${actionLabel}${detail ? '：' + detail : ''}`;
+  }
+
   /** 追加 AI 文本消息 */
   private pushAiText(text: string): void {
     this.chatMessages = [...this.chatMessages, { role: 'ai', text: text, kind: 'text' }];
+  }
+
+  /** 推送"思考中"气泡（进行中，无内容） */
+  private pushThinking(): number {
+    const id = Date.now();
+    this.chatMessages = [...this.chatMessages, {
+      role: 'ai', text: '', kind: 'thinking', thinkingDone: false, stepCtxId: id
+    }];
+    return id;
+  }
+
+  /** 更新思考气泡内容（收到 reasoning_content 后展示思考过程） */
+  private updateThinking(id: number, content: string): void {
+    this.chatMessages = this.chatMessages.map((m: ChatMessage) => {
+      if (m.stepCtxId === id && m.kind === 'thinking') {
+        return {
+          role: 'ai', text: content, kind: 'thinking', thinkingDone: true, stepCtxId: id
+        } as ChatMessage;
+      }
+      return m;
+    });
+  }
+
+  /** 移除思考气泡（请求完成或失败） */
+  private removeThinking(id: number): void {
+    this.chatMessages = this.chatMessages.filter((m: ChatMessage) => !(m.stepCtxId === id && m.kind === 'thinking'));
   }
 
   /** 洞察提问词法判断（不调大模型，直接本地回复） */
@@ -489,6 +1000,96 @@ export struct AiAssistant {
       }
     }
     return false;
+  }
+
+  /** 精确查询：按账户/分类/时间范围/金额/收支类型过滤交易并返回明细 */
+  private async preciseQueryReply(intent: AiIntent): Promise<string> {
+    const accountName = String(intent.fields['account'] || '');
+    const categoryName = String(intent.fields['category'] || '');
+    const dateRange = String(intent.fields['dateRange'] || '');
+    const keyword = intent.targets.length > 0 ? intent.targets[0] : String(intent.fields['comment'] || '');
+    const minAmount = Number(intent.fields['amount'] || 0);
+    const typeFilter = String(intent.fields['type'] || '');
+    // 时间范围起点
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000;
+    let startTs = 0;
+    let endTs = 0;
+    if (dateRange.includes('今天')) {
+      startTs = startOfToday;
+    } else if (dateRange.includes('昨天')) {
+      startTs = startOfToday - 86400;
+      endTs = startOfToday;
+    } else if (dateRange.includes('本周')) {
+      startTs = startOfToday - 7 * 86400;
+    } else if (dateRange.includes('本月') || dateRange.includes('这个月')) {
+      startTs = new Date(now.getFullYear(), now.getMonth(), 1).getTime() / 1000;
+    } else if (dateRange.includes('上月')) {
+      startTs = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime() / 1000;
+      endTs = new Date(now.getFullYear(), now.getMonth(), 1).getTime() / 1000;
+    }
+    const accounts = await this.repository.getAccounts();
+    const lines: string[] = [];
+    let total = 0;
+    let count = 0;
+    for (let acc of accounts) {
+      if (accountName && !acc.label.includes(accountName)) {
+        continue;
+      }
+      const txList = await this.repository.getTransactions(acc.id);
+      for (let t of txList) {
+        if (startTs > 0 && t.date < startTs) {
+          continue;
+        }
+        if (endTs > 0 && t.date >= endTs) {
+          continue;
+        }
+        if (keyword && !t.comment.includes(keyword)) {
+          continue;
+        }
+        if (minAmount > 0 && Math.abs(t.amount) < Math.round(minAmount * 100)) {
+          continue;
+        }
+        // 转账默认排除（除非用户明确要转账）
+        if (t.isTransfer && t.isTransfer()) {
+          continue;
+        }
+        // 收支类型过滤
+        if (typeFilter === 'expense' && t.amount >= 0) {
+          continue;
+        }
+        if (typeFilter === 'income' && t.amount <= 0) {
+          continue;
+        }
+        if (categoryName && t.categoryId >= 0) {
+          const cat = this.categories.find((c: Category) => c.id === t.categoryId);
+          if (cat && !cat.label.includes(categoryName)) {
+            continue;
+          }
+        }
+        count++;
+        total += Math.abs(t.amount);
+        const dateStr = new Date(t.date * 1000).toISOString().slice(0, 10);
+        lines.push(`${dateStr} ${t.amount > 0 ? '收入' : '支出'} ${formatMoney(Math.abs(t.amount), 2)} ${t.comment || ''}`);
+        if (count >= 10) {
+          break;
+        }
+      }
+      if (count >= 10) {
+        break;
+      }
+    }
+    if (lines.length === 0) {
+      return `未找到符合条件的交易${keyword ? '（' + keyword + '）' : ''}。`;
+    }
+    const conds: string[] = [];
+    if (accountName) { conds.push(`账户${accountName}`); }
+    if (categoryName) { conds.push(`分类${categoryName}`); }
+    if (dateRange) { conds.push(dateRange); }
+    if (typeFilter === 'expense') { conds.push('支出'); }
+    if (typeFilter === 'income') { conds.push('收入'); }
+    const head = `共 ${count} 笔交易，合计 ${formatMoney(total, 2)} 元${conds.length > 0 ? '（' + conds.join('·') + '）' : ''}：`;
+    return `${head}\n${lines.join('\n')}`;
   }
 
   /** 洞察回复摘要（复用本地分析数据） */
@@ -1186,10 +1787,18 @@ export struct AiAssistant {
               this.userBubble(msg.text)
             } else if (msg.kind === 'bill') {
               this.billBubble()
+            } else if (msg.kind === 'plan') {
+              this.planBubble(msg)
+            } else if (msg.kind === 'thinking') {
+              this.thinkingBubble(msg)
+            } else if (msg.kind === 'confirm') {
+              this.confirmBubble(msg)
+            } else if (msg.kind === 'candidates') {
+              this.candidatesBubble()
             } else {
               this.aiBubble(msg.text)
             }
-          }, (msg: ChatMessage, index: number) => `chat_${index}_${msg.text}`)
+          }, (msg: ChatMessage, index: number) => `chat_${index}_${msg.kind}_${msg.text}_${msg.stepCtxId || 0}_${msg.confirmStepNo || 0}_${msg.thinkingDone === true ? 'T' : 'P'}`)
         }
         .width('100%')
         .padding({ left: 16, right: 16, top: 12, bottom: 12 })
@@ -1397,6 +2006,414 @@ export struct AiAssistant {
     .backgroundColor($r('app.color.cardBackgroundColor'))
     .borderRadius(18)
     .constraintSize({ maxWidth: '90%' })
+  }
+
+  /** 修改/删除确认气泡（对话内交互，不用系统弹窗） */
+  @Builder
+  confirmBubble(msg: ChatMessage) {
+    Column({ space: 8 }) {
+      if (msg.action) {
+        Text(`${msg.confirmStepNo ? '第' + msg.confirmStepNo + '步·' : ''}${msg.action.type === 'delete' || msg.action.type === 'accountDelete' ? '删除确认' : '修改确认'}`)
+          .fontSize(15)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.textPrimary'))
+        Divider().color($r('app.color.dividerColor')).strokeWidth(0.5)
+        if (msg.action.type === 'accountDelete') {
+          Text(this.accountDeleteSummary(msg.action))
+            .fontSize(14)
+            .lineHeight(21)
+            .fontColor($r('app.color.textPrimary'))
+        } else if (msg.action.type === 'templateDelete') {
+          Text(`确定删除模板「${String(msg.action.fields['comment'] || '')}」吗？删除后不可恢复。`)
+            .fontSize(14)
+            .lineHeight(21)
+            .fontColor($r('app.color.textPrimary'))
+        } else if (msg.action.type === 'templateUse') {
+          Text(`将按模板「${String(msg.action.fields['comment'] || '')}」创建一笔交易（${formatMoney(Number(msg.action.fields['amount'] || 0), 2)} 元）。确认执行吗？`)
+            .fontSize(14)
+            .lineHeight(21)
+            .fontColor($r('app.color.textPrimary'))
+        } else if (msg.action.type === 'delete') {
+          Text(`确定删除这笔交易吗？删除后不可恢复。\n${this.txDetailText(msg.action.target)}`)
+            .fontSize(14)
+            .lineHeight(21)
+            .fontColor($r('app.color.textPrimary'))
+        } else {
+          Text(`将修改以下交易：\n${this.txDetailText(msg.action.target)}\n\n${this.pendingEditSummary(msg.action)}`)
+            .fontSize(14)
+            .lineHeight(21)
+            .fontColor($r('app.color.textPrimary'))
+        }
+        Row({ space: 8 }) {
+          Button('取消')
+            .layoutWeight(1)
+            .height(38)
+            .fontSize(14)
+            .backgroundColor($r('app.color.pageBackground'))
+            .fontColor($r('app.color.textSecondary'))
+            .onClick(() => {
+              this.cancelPendingAction(msg.action!);
+            })
+          Button(this.confirmButtonLabel(msg.action))
+            .layoutWeight(1)
+            .height(38)
+            .fontSize(14)
+            .backgroundColor(msg.action.type === 'delete' || msg.action.type === 'accountDelete' || msg.action.type === 'templateDelete' ? $r('app.color.colorExpense') : $r('app.color.primaryColor'))
+            .fontColor(Color.White)
+            .onClick(() => {
+              this.confirmPendingAction(msg.action!);
+            })
+        }
+        .width('100%')
+      }
+    }
+    .width('100%')
+    .padding(14)
+    .backgroundColor($r('app.color.cardBackgroundColor'))
+    .borderRadius(18)
+    .constraintSize({ maxWidth: '90%' })
+  }
+
+  /** 确认按钮文案 */
+  private confirmButtonLabel(action: PendingAction): string {
+    const type = action?.type;
+    if (type === 'templateUse') {
+      return '确认执行';
+    }
+    if (type === 'delete' || type === 'accountDelete' || type === 'templateDelete') {
+      return '确认删除';
+    }
+    return '确认修改';
+  }
+
+  /** 账户删除确认摘要 */
+  private accountDeleteSummary(action: PendingAction): string {
+    const accName = String(action?.fields['comment'] || '');
+    const txCount = Number(action?.fields['amount'] || 0);
+    const txNote = txCount > 0 ? `该账户下有 ${txCount} 笔交易（删除账户不会删除交易）。` : '该账户无交易。';
+    return `确定删除账户「${accName}」吗？${txNote}删除后不可恢复。`;
+  }
+
+  /** 修改确认摘要（供 confirmBubble 使用） */
+  private pendingEditSummary(action: PendingAction): string {
+    const changes: string[] = [];
+    const newAmount = Number(action?.fields['amount'] || 0);
+    if (newAmount > 0) {
+      changes.push(`金额改为 ${newAmount} 元`);
+    }
+    const newComment = String(action?.fields['comment'] || '');
+    if (newComment) {
+      changes.push(`备注改为「${newComment}」`);
+    }
+    const target = action?.target;
+    const label = target ? target.comment || '无备注' : '';
+    return `将修改「${label}」：${changes.join('，') || '无变更'}`;
+  }
+
+  /** 多步骤执行计划气泡（对话内确认，不使用系统弹窗） */
+  @Builder
+  planBubble(msg: ChatMessage) {
+    Column({ space: 10 }) {
+      Text('执行计划')
+        .fontSize(15)
+        .fontWeight(FontWeight.Bold)
+        .fontColor($r('app.color.textPrimary'))
+      Divider().color($r('app.color.dividerColor')).strokeWidth(0.5)
+      if (msg.planSteps && msg.planSteps.length > 0) {
+        ForEach(msg.planSteps, (s: AiIntent, i: number) => {
+          Row() {
+            Text(`${i + 1}.`)
+              .fontSize(14)
+              .fontColor($r('app.color.textSecondary'))
+              .width(28)
+            Text(this.stepSummary(s))
+              .fontSize(14)
+              .lineHeight(20)
+              .fontColor($r('app.color.textPrimary'))
+              .layoutWeight(1)
+          }
+          .width('100%')
+        }, (s: AiIntent, i: number) => `plan_${i}_${s.domain}_${s.action}`)
+      }
+      Text(`将按顺序执行以上 ${msg.planSteps ? msg.planSteps.length : 0} 步；任一步失败将停止后续写操作。`)
+        .fontSize(12)
+        .lineHeight(18)
+        .fontColor($r('app.color.textSecondary'))
+      Row({ space: 8 }) {
+        Button('取消')
+          .layoutWeight(1)
+          .height(38)
+          .fontSize(14)
+          .backgroundColor($r('app.color.pageBackground'))
+          .fontColor($r('app.color.textSecondary'))
+          .onClick(() => {
+            this.removePlanBubble(msg.stepCtxId!);
+            this.stepCtx = null;
+            this.pushAiText('已取消执行。');
+          })
+        Button('执行')
+          .layoutWeight(1)
+          .height(38)
+          .fontSize(14)
+          .backgroundColor($r('app.color.primaryColor'))
+          .fontColor(Color.White)
+          .onClick(() => {
+            this.removePlanBubble(msg.stepCtxId!);
+            if (this.stepCtx && this.stepCtx.id === msg.stepCtxId) {
+              this.runStepsFromIndex(msg.stepCtxId!, 0);
+            } else {
+              this.pushAiText('该执行计划已失效，请重新描述。');
+            }
+          })
+      }
+      .width('100%')
+    }
+    .width('100%')
+    .padding(14)
+    .backgroundColor($r('app.color.cardBackgroundColor'))
+    .borderRadius(18)
+    .constraintSize({ maxWidth: '92%' })
+  }
+
+  /** 移除指定执行计划气泡 */
+  private removePlanBubble(ctxId: number): void {
+    const msgs = [...this.chatMessages];
+    const idx = msgs.findIndex((m: ChatMessage) => m.kind === 'plan' && m.stepCtxId === ctxId);
+    if (idx >= 0) {
+      msgs.splice(idx, 1);
+      this.chatMessages = msgs;
+    }
+  }
+
+  /** 大模型思考气泡（请求期间显示"思考中…"，收到 reasoning_content 后展示思考过程） */
+  @Builder
+  thinkingBubble(msg: ChatMessage) {
+    Column({ space: 8 }) {
+      Row({ space: 8 }) {
+        if (msg.thinkingDone === true) {
+          Image($r('app.media.ic_ai_robot'))
+            .width(18)
+            .height(18)
+            .fillColor($r('app.color.textSecondary'))
+        } else {
+          LoadingProgress()
+            .width(18)
+            .height(18)
+            .color($r('app.color.primaryColor'))
+        }
+        Text(msg.thinkingDone === true ? '思考过程' : '正在思考…')
+          .fontSize(13)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.textSecondary'))
+      }
+      .width('100%')
+
+      if (msg.thinkingDone === true && msg.text.length > 0) {
+        Text(msg.text)
+          .fontSize(13)
+          .lineHeight(20)
+          .fontColor($r('app.color.textSecondary'))
+          .width('100%')
+      }
+    }
+    .width('100%')
+    .padding(12)
+    .backgroundColor($r('app.color.pageBackground'))
+    .borderRadius(12)
+    .constraintSize({ maxWidth: '90%' })
+  }
+
+  /** 多笔候选气泡（歧义消解：展示详细列表，用户点击选择） */
+  @Builder
+  candidatesBubble() {
+    Column({ space: 6 }) {
+      Text(`找到 ${this.candidateList.length} 笔匹配交易，请选择要${this.candidateType === 'delete' ? '删除' : '修改'}的一笔：`)
+        .fontSize(14)
+        .fontColor($r('app.color.textPrimary'))
+      ForEach(this.candidateList, (tx: Transaction, index: number) => {
+        Column() {
+          Text(`${index + 1}. ${this.txDetailText(tx)}`)
+            .fontSize(14)
+            .lineHeight(21)
+            .fontColor($r('app.color.textPrimary'))
+            .width('100%')
+        }
+        .width('100%')
+        .padding(10)
+        .backgroundColor($r('app.color.pageBackground'))
+        .borderRadius(8)
+        .onClick(() => {
+          this.selectCandidate(tx);
+        })
+      }, (tx: Transaction, index: number) => `cand_${index}_${tx.id}`)
+    }
+    .width('100%')
+    .padding(14)
+    .backgroundColor($r('app.color.cardBackgroundColor'))
+    .borderRadius(18)
+    .constraintSize({ maxWidth: '92%' })
+  }
+
+  /** 选择候选交易 → 转为待确认操作 */
+  private selectCandidate(tx: Transaction): void {
+    const f: Record<string, string | number> = {};
+    f['amount'] = 0;
+    f['comment'] = '';
+    const candAction: PendingAction = {
+      type: this.candidateType,
+      target: tx,
+      fields: f
+    };
+    this.pendingAction = candAction;
+    // 移除候选气泡
+    const msgs = [...this.chatMessages];
+    const last = msgs[msgs.length - 1];
+    if (last && last.kind === 'candidates') {
+      msgs.pop();
+    }
+    msgs.push({ role: 'ai', text: '', kind: 'confirm', action: candAction });
+    this.chatMessages = msgs;
+    this.candidateList = [];
+  }
+
+  /** 交易详细信息文本（日期/账户/分类/金额/备注） */
+  private txDetailText(tx: Transaction): string {
+    const dateStr = new Date(tx.date * 1000).toISOString().slice(0, 10);
+    const account = this.accounts.find((a: Account) => a.id === tx.accountId);
+    const category = tx.categoryId >= 0 ? this.categories.find((c: Category) => c.id === tx.categoryId) : null;
+    const accountLabel = account ? account.label : '未知账户';
+    const categoryLabel = category ? category.label : '未分类';
+    return `${dateStr} ${tx.comment || '无备注'} ${formatMoney(Math.abs(tx.amount), 2)} 元（${accountLabel}·${categoryLabel}）`;
+  }
+
+  /** 执行待确认操作（修改/删除）—— action 由调用方从 confirm 消息快照传入 */
+  private async confirmPendingAction(action: PendingAction | null): Promise<void> {
+    const act = action || this.pendingAction;
+    if (!act) {
+      return;
+    }
+    const target = act.target;
+    try {
+      if (act.type === 'templateDelete') {
+        const tplId = Number(act.fields['templateId'] || 0);
+        const tplTitle = String(act.fields['comment'] || '');
+        await this.repository.deleteTemplate(tplId);
+        this.pushAiText(`已删除模板「${tplTitle}」。`);
+      } else if (act.type === 'templateUse') {
+        const tplId = Number(act.fields['templateId'] || 0);
+        const tplTitle = String(act.fields['comment'] || '');
+        const templates = await this.repository.getTemplates();
+        const tpl = templates.find((t: Template) => t.id === tplId);
+        if (tpl) {
+          const txId = await this.repository.instantiateTemplate(tpl);
+          if (txId > 0) {
+            this.pushAiText(`已按模板「${tplTitle}」创建交易 ${formatMoney(Math.abs(tpl.amount), 2)} 元。`);
+          } else {
+            this.pushAiText('模板创建交易失败。');
+          }
+        } else {
+          this.pushAiText('模板不存在或已失效。');
+        }
+      } else if (act.type === 'accountDelete') {
+        const accId = Number(act.fields['accountId'] || 0);
+        const accName = String(act.fields['comment'] || '');
+        await this.repository.deleteAccount(accId);
+        this.pushAiText(`已删除账户「${accName}」。`);
+      } else if (act.type === 'delete') {
+        await this.repository.deleteTransaction(target.id);
+        this.pushAiText(`已删除交易「${target.comment || '无备注'}」${formatMoney(Math.abs(target.amount), 2)} 元。`);
+      } else {
+        const newAmount = Number(act.fields['amount'] || 0);
+        if (newAmount > 0) {
+          const sign = target.amount >= 0 ? 1 : -1;
+          target.amount = sign * Math.round(newAmount * 100);
+        }
+        const newComment = String(act.fields['comment'] || '');
+        if (newComment) {
+          target.comment = newComment;
+        }
+        await this.repository.updateTransaction(target);
+        const changes: string[] = [];
+        if (newAmount > 0) { changes.push(`金额改为 ${newAmount} 元`); }
+        if (newComment) { changes.push(`备注改为「${newComment}」`); }
+        this.pushAiText(`已修改交易：${changes.join('，')}。`);
+      }
+      this.removeConfirmBubble(act);
+      if (this.pendingAction === act) {
+        this.pendingAction = null;
+      }
+      this.onDataChanged();
+      // 多步骤：若该确认来自步骤执行（stepResume 匹配），恢复执行剩余步骤
+      const resume = this.stepResume;
+      this.stepResume = null;
+      if (resume && resume.actionType === act.type) {
+        await this.runStepsFromIndex(resume.ctxId, resume.nextIndex);
+      }
+    } catch (e) {
+      this.pushAiText('操作执行失败：' + JSON.stringify(e));
+      if (this.pendingAction === act) {
+        this.pendingAction = null;
+      }
+    }
+  }
+
+  /** 取消待确认操作—— action 由调用方从 confirm 消息快照传入 */
+  private cancelPendingAction(action: PendingAction | null): void {
+    this.removeConfirmBubble(action || this.pendingAction);
+    if (this.pendingAction === (action || this.pendingAction)) {
+      this.pendingAction = null;
+    }
+    // 多步骤取消：停止剩余步骤执行
+    if (this.stepResume) {
+      this.stepResume = null;
+      this.stepCtx = null;
+      this.pushAiText('已取消执行。');
+    }
+  }
+
+  /** 移除指定确认气泡（action 匹配或最后一条 confirm） */
+  private removeConfirmBubble(action?: PendingAction | null): void {
+    const msgs = [...this.chatMessages];
+    if (action) {
+      // 按操作快照匹配移除（target/type/fields 相同的 confirm 消息）
+      const idx = msgs.findIndex((m: ChatMessage) => m.kind === 'confirm' && m.action === action);
+      if (idx >= 0) {
+        msgs.splice(idx, 1);
+        this.chatMessages = msgs;
+        return;
+      }
+    }
+    const last = msgs[msgs.length - 1];
+    if (last && last.kind === 'confirm') {
+      msgs.pop();
+    }
+    this.chatMessages = msgs;
+  }
+
+  /**
+   * 用户发出新指令时调用：把此前未确认的修改/删除气泡折叠为一行提示，避免
+   * "缩成一行后点击无反应"以及 pendingAction 被后续输入覆盖导致的错乱。
+   * 同时放弃未执行的 plan / 步骤执行上下文。
+   */
+  private expirePendingConfirmBubbles(): void {
+    // 将所有 confirm/plan/thinking 消息替换为已放弃/完成的提示文本（保留对话可读性，不产生空卡）
+    const msgs = this.chatMessages.map((m: ChatMessage) => {
+      if (m.kind === 'confirm' || m.kind === 'plan') {
+        return {
+          role: 'ai', text: '（上一步操作未确认，已被新指令覆盖，不再执行）', kind: 'text'
+        } as ChatMessage;
+      }
+      if (m.kind === 'thinking') {
+        return {
+          role: 'ai', text: '（上一次思考已被新指令打断）', kind: 'text'
+        } as ChatMessage;
+      }
+      return m;
+    });
+    this.chatMessages = msgs;
+    this.pendingAction = null;
+    this.stepCtx = null;
+    this.stepResume = null;
   }
 
   /** 确认写入（对话版：执行后替换账单气泡为结果） */

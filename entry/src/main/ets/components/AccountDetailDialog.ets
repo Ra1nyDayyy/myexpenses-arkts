@@ -23,8 +23,11 @@ export struct AccountDetailDialog {
   };
 
   private format(v: number): string {
-    const abs = Math.abs(v);
-    const neg = v < 0;
+    // 传入值单位为分（account 汇总），除以 10^fractionDigits 转元
+    const divisor = Math.pow(10, this.fractionDigits);
+    const value = v / divisor;
+    const abs = Math.abs(value);
+    const neg = value < 0;
     const fixed = abs.toFixed(this.fractionDigits);
     return (neg ? '-' : '') + this.currencySymbol + fixed;
   }

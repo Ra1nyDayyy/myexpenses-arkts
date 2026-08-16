@@ -1,4 +1,4 @@
-import { promptAction } from '@kit.ArkUI';
+import { promptAction, router } from '@kit.ArkUI';
 import { SettingsService, PREF_KEY } from '../database/SettingsService';
 
 /**
@@ -29,19 +29,22 @@ export struct SettingsData {
         Column() {
           // 管理类别
           this.buildSettingItem('管理类别', '添加、编辑、删除类别', () => {
-            promptAction.showToast({ message: '跳转到类别管理' });
+            router.pushUrl({ url: 'pages/CategoryManage' }).catch(() => {
+            });
           })
           Divider().strokeWidth(0.5).color($r('app.color.dividerColor'))
 
           // 管理付款方式
           this.buildSettingItem('管理付款方式', '现金、信用卡、支付宝等', () => {
-            promptAction.showToast({ message: '跳转到付款方式管理' });
+            router.pushUrl({ url: 'pages/MethodManage' }).catch(() => {
+            });
           })
           Divider().strokeWidth(0.5).color($r('app.color.dividerColor'))
 
           // 管理标签
           this.buildSettingItem('标签', '为交易添加标签', () => {
-            promptAction.showToast({ message: '跳转到标签管理' });
+            router.pushUrl({ url: 'pages/TagManage' }).catch(() => {
+            });
           })
           Divider().strokeWidth(0.5).color($r('app.color.dividerColor'))
 

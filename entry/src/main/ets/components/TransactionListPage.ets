@@ -19,10 +19,12 @@ export struct TransactionListPage {
   @Prop transactions: Transaction[] = [];
   @Prop grouping: number = 0; // 0 none 1 day 2 week 3 month 4 year
   @Prop showSumDetails: boolean = false;
-  @Prop selectionMode: boolean = false;
+  // 多选模式（@Link 确保 List 懒加载场景下同步刷新，@Prop 不随父组件状态更新）
+  @Link selectionMode: boolean;
+  // 选中交易 id 列表（@Prop 使 ListItem 重建时同步选中态）
+  @Prop selectedIds: number[] = [];
   // 聚合模式（全部账户累计）：交易行显示所属账户名
   @Prop showAccount: boolean = false;
-  selectedIds: number[] = [];
   onToggleStatus: (id: number) => void = () => {
   };
   onClickTransaction: (id: number) => void = () => {
@@ -121,6 +123,7 @@ export struct TransactionListPage {
                     transaction: t,
                     selected: this.selectedIds.indexOf(t.id) >= 0,
                     showAccount: this.showAccount,
+                    selectionMode: $selectionMode,
                     // 选择模式不弹操作菜单（点击用于多选）
                     menuItems: this.selectionMode ? [] : this.menuItemsFor(t),
                     onToggleStatus: (id: number) => {
@@ -134,7 +137,7 @@ export struct TransactionListPage {
                     }
                   })
                 }
-              }, (t: Transaction) => `trans_${t.id}`)
+              }, (t: Transaction) => `trans_${t.id}_${this.selectionMode ? 'S' : 'N'}_${this.selectedIds.indexOf(t.id) >= 0 ? '1' : '0'}`)
             }
           }, (groupKey: string) => `header_${groupKey}`)
         }

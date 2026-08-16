@@ -1,5 +1,6 @@
 import { SettingsMain } from './SettingsMain';
 import { SettingsData } from './SettingsData';
+
 import { SettingsUI } from './SettingsUI';
 import { SettingsIO } from './SettingsIO';
 
@@ -49,6 +50,7 @@ struct Settings {
       SettingsFeedback()
     } else if (name === 'SettingsAdvanced') {
       SettingsAdvanced()
+
     }
   }
 }

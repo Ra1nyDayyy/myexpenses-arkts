@@ -59,9 +59,12 @@ export struct AccountListPage {
     for (let acc of this.accounts) {
       let key = '';
       switch (this.grouping) {
-        case AccountGrouping.TYPE:
         case AccountGrouping.NONE:
-          // 账户列表默认按类型分组（对齐安卓 AccountGrouping.TYPE）
+          // 不分组：所有账户一个分组
+          key = '所有账户';
+          break;
+        case AccountGrouping.TYPE:
+          // 按类型分组（对齐安卓 AccountGrouping.TYPE）
           key = `${Account.typeName(acc.type)} (Σ)`;
           break;
         case AccountGrouping.CURRENCY:

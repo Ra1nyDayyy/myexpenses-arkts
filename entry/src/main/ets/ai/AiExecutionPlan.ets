@@ -41,6 +41,10 @@ export class AiExecutionPlan {
     if (!/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(normalized)) {
       return { valid: false, minorUnits: 0, error: '金额格式无效' };
     }
+    // 金额上限：单笔不超过 99999999.99（约 1 亿），避免极端大额写入
+    if (Number(normalized) > 99999999.99) {
+      return { valid: false, minorUnits: 0, error: '单笔金额过大（超过 99999999.99），暂未执行' };
+    }
     const parts: string[] = normalized.split('.');
     const whole: string = parts[0].length > 0 ? parts[0] : '0';
     const decimals: string = parts.length > 1 ? parts[1] : '';

@@ -75,9 +75,7 @@ struct ExpenseEdit {
       }
     }),
     autoCancel: true,
-    alignment: DialogAlignment.Center,
-    customStyle: true,
-    cornerRadius: 16
+    alignment: DialogAlignment.Center
   });
 
   private showCalculator(): void {
@@ -89,9 +87,7 @@ struct ExpenseEdit {
         }
       }),
       autoCancel: true,
-      alignment: DialogAlignment.Center,
-      customStyle: true,
-      cornerRadius: 16
+      alignment: DialogAlignment.Center
     });
     this.calculator.open();
   }
@@ -712,22 +708,23 @@ struct ExpenseEdit {
     .backgroundColor($r('app.color.surfaceBrandSoft'))
   }
 
+  private splitPartAmountDialog: CustomDialogController | null = null;
+
   private editSplitPartAmount(index: number): void {
     const part = this.splitParts[index];
-    const dialog = new CustomDialogController({
+    this.splitPartAmountDialog = new CustomDialogController({
       builder: CalculatorDialog({
         display: part.amount !== 0 ? formatMoney(Math.abs(part.amount), this.fractionDigits()) : '0',
         onResult: (value: string) => {
           part.amount = parseMoney(value, this.fractionDigits());
           this.splitParts = [...this.splitParts];
+          this.splitPartAmountDialog?.close();
         }
       }),
       autoCancel: true,
-      alignment: DialogAlignment.Center,
-      customStyle: true,
-      cornerRadius: 16
+      alignment: DialogAlignment.Center
     });
-    dialog.open();
+    this.splitPartAmountDialog.open();
   }
 
   /**
@@ -1170,7 +1167,7 @@ struct ExpenseEdit {
                 }
                 .width('100%')
                 .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
-              }, (part: Transaction, index: number) => `part_${index}_${part.tagIds.join('_')}`)
+              }, (part: Transaction, index: number) => `part_${index}_${part.amount}_${part.categoryPath}_${part.tagIds.join('_')}`)
 
               // 添加子交易
               Button('+ 添加拆分项')

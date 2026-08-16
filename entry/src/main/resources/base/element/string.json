@@ -565,6 +565,10 @@
       "value": "用于拍照添加附件"
     },
     {
+      "name": "permission_read_image_reason",
+      "value": "用于读取所选图片发送给 AI 理解"
+    },
+    {
       "name": "toast_enter_account_name",
       "value": "请输入账户名称"
     },

@@ -1063,7 +1063,20 @@ export class Repository {
       'is_default': budget.isDefault ? 1 : 0,
       'uuid': generateUuid()
     };
-    return this.store().insert('budgets', values);
+    const id = await this.store().insert('budgets', values);
+    // 同时写入分配表（预算金额存在 budget_allocations.budget，列表按分配汇总显示）
+    if (id > 0 && budget.budgetAmount > 0) {
+      const allocValues: relationalStore.ValuesBucket = {
+        'budget_id': id,
+        'cat_id': 0,
+        'year': null,
+        'second': null,
+        'budget': budget.budgetAmount,
+        'roll_over_previous': 0
+      };
+      await this.store().insert('budget_allocations', allocValues);
+    }
+    return id;
   }
 
   async deleteBudget(id: number): Promise<number> {
