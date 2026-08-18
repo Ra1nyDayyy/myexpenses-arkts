@@ -120,7 +120,7 @@ export struct BudgetEdit {
                 .width(100)
               Row({ space: 8 }) {
                 TextInput({ placeholder: '0.00', text: this.amount })
-                  .type(InputType.Number)
+                  .type(InputType.NUMBER_DECIMAL)
                   .layoutWeight(1)
                   .backgroundColor(Color.Transparent)
                   .onChange((value: string) => {

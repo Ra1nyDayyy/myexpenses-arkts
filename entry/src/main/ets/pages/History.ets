@@ -4,7 +4,7 @@
  */
 import { Repository } from '../database/Repository';
 import { PageHeader } from '../components/PageHeader';
-import { router } from '@kit.ArkUI';
+import { router, promptAction } from '@kit.ArkUI';
 import { formatMoney } from '../model/Money';
 import { Transaction } from '../model/Transaction';
 
@@ -18,6 +18,7 @@ interface MonthBar {
 @Component
 struct History {
   @State bars: MonthBar[] = [];
+  @State monthRange: number = 6;
   private repository: Repository = Repository.getInstance();
 
   aboutToAppear(): void {
@@ -26,10 +27,10 @@ struct History {
 
   private async load(): Promise<void> {
     const all = await this.repository.getAllTransactions();
-    // 取最近 6 个月
+    const range = this.monthRange;
     const now = new Date();
     const list: MonthBar[] = [];
-    for (let i = 5; i >= 0; i--) {
+    for (let i = range - 1; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       list.push({
         label: `${d.getMonth() + 1}月`,
@@ -38,16 +39,20 @@ struct History {
       } as MonthBar);
     }
     for (let t of all) {
+      // 跳过拆分子项，只计算主交易行（对齐 getTransactions 的 isNull('parent_id') 过滤）
+      if (t.parentId > 0) {
+        continue;
+      }
       const d = new Date(t.date * 1000);
       const idx = (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth());
-      if (idx >= 0 && idx < 6) {
+      if (idx >= 0 && idx < range) {
         if (t.isTransfer()) {
           continue;
         }
         if (t.amount > 0) {
-          list[5 - idx].income += t.amount;
+          list[range - 1 - idx].income += t.amount;
         } else {
-          list[5 - idx].expense += t.amount;
+          list[range - 1 - idx].expense += t.amount;
         }
       }
     }
@@ -83,9 +88,29 @@ struct History {
           Text('支出').fontSize(12).fontColor($r('app.color.textSecondary'))
         }
         Blank()
-        Text('近 6 个月')
+        Text(`近 ${this.monthRange} 个月`)
           .fontSize(12)
           .fontColor($r('app.color.textTertiary'))
+          .onClick(() => {
+            promptAction.showActionMenu({
+              title: '选择时间范围',
+              buttons: [
+                { text: '近 3 个月', color: '#666666' },
+                { text: '近 6 个月', color: '#666666' },
+                { text: '近 12 个月', color: '#666666' }
+              ]
+            }).then((result: promptAction.ActionMenuSuccessResponse) => {
+              if (result.index === 0) {
+                this.monthRange = 3;
+              } else if (result.index === 1) {
+                this.monthRange = 6;
+              } else if (result.index === 2) {
+                this.monthRange = 12;
+              }
+              this.load();
+            }).catch(() => {
+            });
+          })
       }
       .width('100%')
       .padding({ left: 16, right: 16, top: 12, bottom: 8 })

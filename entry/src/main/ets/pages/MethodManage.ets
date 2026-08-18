@@ -1,18 +1,23 @@
 import { PaymentMethod } from '../model/SupportEntities';
 import { Repository } from '../database/Repository';
 import { PageHeader } from '../components/PageHeader';
-import { router } from '@kit.ArkUI';
+import { router, promptAction } from '@kit.ArkUI';
 
 /**
- * 付款方法输入对话框（鸿蒙原生 CustomDialog）
+ * 付款方式输入对话框（鸿蒙原生 CustomDialog）
  */
 @CustomDialog
 export struct MethodInputDialog {
   controller?: CustomDialogController;
-  title: string = '新建付款方法';
+  title: string = '新建付款方式';
+  initialLabel: string = '';
   @State label: string = '';
   onConfirm: (label: string) => void = () => {
   };
+
+  aboutToAppear(): void {
+    this.label = this.initialLabel;
+  }
 
   build() {
     Column() {
@@ -65,7 +70,7 @@ struct MethodManage {
   private editMethod: PaymentMethod | null = null;
   private dialog: CustomDialogController = new CustomDialogController({
     builder: MethodInputDialog({
-      title: '新建付款方法',
+      title: '新建付款方式',
       onConfirm: (label: string) => {
         this.saveMethod(label);
       }
@@ -92,7 +97,26 @@ struct MethodManage {
     this.editMethod = null;
     this.dialog = new CustomDialogController({
       builder: MethodInputDialog({
-        title: '新建付款方法',
+        title: '新建付款方式',
+        initialLabel: '',
+        onConfirm: (label: string) => {
+          this.saveMethod(label);
+        }
+      }),
+      autoCancel: true,
+      alignment: DialogAlignment.Center,
+      customStyle: false,
+      cornerRadius: 12
+    });
+    this.dialog.open();
+  }
+
+  private openEditDialog(m: PaymentMethod): void {
+    this.editMethod = m;
+    this.dialog = new CustomDialogController({
+      builder: MethodInputDialog({
+        title: '编辑付款方式',
+        initialLabel: m.label,
         onConfirm: (label: string) => {
           this.saveMethod(label);
         }
@@ -106,32 +130,55 @@ struct MethodManage {
   }
 
   private async saveMethod(label: string): Promise<void> {
-    if (!label.trim()) {
+    const trimmed = label.trim();
+    if (!trimmed) {
+      promptAction.showToast({ message: '请输入名称' });
       return;
     }
-    if (this.editMethod) {
-      this.editMethod.label = label.trim();
-      await this.repository.updatePaymentMethod(this.editMethod);
-    } else {
-      const m = new PaymentMethod();
-      m.label = label.trim();
-      m.isNumbered = false;
-      m.type = 0;
-      await this.repository.insertPaymentMethod(m);
+    try {
+      if (this.editMethod) {
+        this.editMethod.label = trimmed;
+        await this.repository.updatePaymentMethod(this.editMethod);
+      } else {
+        const m = new PaymentMethod();
+        m.label = trimmed;
+        m.isNumbered = false;
+        m.type = 0;
+        await this.repository.insertPaymentMethod(m);
+      }
+      this.editMethod = null;
+      await this.load();
+      promptAction.showToast({ message: $r('app.string.toast_save_success') });
+    } catch (e) {
+      promptAction.showToast({ message: $r('app.string.toast_save_failed') });
     }
-    this.editMethod = null;
-    await this.load();
   }
 
-  private async deleteMethod(m: PaymentMethod): Promise<void> {
+  private deleteMethod(m: PaymentMethod): void {
+    promptAction.showDialog({
+      title: '删除付款方式',
+      message: `确定删除"${m.label}"吗？`,
+      buttons: [
+        { text: '取消', color: '#808080' },
+        { text: '删除', color: '#E53935' }
+      ]
+    }).then((result: promptAction.ShowDialogSuccessResponse) => {
+      if (result.index === 1) {
+        this.executeDeleteMethod(m);
+      }
+    });
+  }
+
+  private async executeDeleteMethod(m: PaymentMethod): Promise<void> {
     await this.repository.deletePaymentMethod(m.id);
+    promptAction.showToast({ message: $r('app.string.toast_deleted') });
     await this.load();
   }
 
   build() {
     Column() {
       PageHeader({
-        title: '付款方法',
+        title: '付款方式',
         rightText: '+',
         onBack: () => {
           router.back();
@@ -163,6 +210,9 @@ struct MethodManage {
             .margin({ left: 12, right: 12 })
             .borderRadius($r('app.float.native_card_radius'))
             .backgroundColor($r('app.color.surfacePrimary'))
+            .onClick(() => {
+              this.openEditDialog(m);
+            })
           }
         }, (m: PaymentMethod) => `method_${m.id}`)
       }

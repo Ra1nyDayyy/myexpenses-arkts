@@ -2,7 +2,7 @@ import { Tag } from '../model/SupportEntities';
 import { Repository } from '../database/Repository';
 import { PageHeader } from '../components/PageHeader';
 import { EmptyState } from '../components/EmptyState';
-import { router } from '@kit.ArkUI';
+import { router, promptAction } from '@kit.ArkUI';
 
 /**
  * 标签选择页面（对齐安卓 ManageTags + TagList）
@@ -34,18 +34,26 @@ struct TagSelect {
    * 创建新标签
    */
   private async createTag(): Promise<void> {
-    if (!this.newTagLabel.trim()) {
+    const trimmed = this.newTagLabel.trim();
+    if (!trimmed) {
+      promptAction.showToast({ message: '请输入标签名称' });
       return;
     }
-    await this.repository.insertTag(this.newTagLabel.trim(), 0x0050A7);
-    this.newTagLabel = '';
-    await this.load();
-    // 自动选中新创建的标签
-    if (this.tags.length > 0) {
-      const lastTag = this.tags[this.tags.length - 1];
-      if (!this.selectedTagIds.includes(lastTag.id)) {
-        this.selectedTagIds.push(lastTag.id);
+    try {
+      await this.repository.insertTag(trimmed, 0x0050A7);
+      this.newTagLabel = '';
+      await this.load();
+      // 自动选中新创建的标签
+      if (this.tags.length > 0) {
+        const lastTag = this.tags[this.tags.length - 1];
+        if (!this.selectedTagIds.includes(lastTag.id)) {
+          this.selectedTagIds.push(lastTag.id);
+          this.selectedTagIds = [...this.selectedTagIds];
+        }
       }
+      promptAction.showToast({ message: '标签已创建' });
+    } catch (e) {
+      promptAction.showToast({ message: `创建失败: ${(e as Error).message}` });
     }
   }
 

@@ -1,0 +1,25 @@
+# run.log — Orchestrator 主日志
+
+格式: [时间戳] [角色] [动作] [结果] [证据/备注]
+
+[2026-08-18T03:51] [Orchestrator] [读Runbook+蓝图] [完成] [877行Runbook+240行蓝图]
+[2026-08-18T03:51] [Orchestrator] [枚举既有实例] [完成] [5个实例: Mate X7/Pura90/Pura90test/MateBookPro/MatePadPro13; 在线端口5555/5557/5559]
+[2026-08-18T03:52] [Orchestrator] [初始化目录] [完成] [docs/ux-optimization/{evidence,logs,state/deviceTokens}]
+[2026-08-18T03:52] [Orchestrator] [内存评估] [完成] [可用9.9GB<16GB → TIME_SLICE]
+[2026-08-18T03:53] [Orchestrator] [创建专用实例] [成功] [MyExpensesUX_20260818, phone, API24]
+[2026-08-18T03:55] [Orchestrator] [启动专用实例] [成功] [端口16555, connectKey=127.0.0.1:16555]
+[2026-08-18T03:57] [Orchestrator] [构建debug HAP] [成功] [sha256=2719e53e..., 3.18MB, 6.775s]
+[2026-08-18T03:57] [Orchestrator] [安装HAP] [成功] [-t 127.0.0.1:16555 install -r]
+[2026-08-18T03:57] [Orchestrator] [启动EntryAbility] [成功] [Mission#30]
+[2026-08-18T03:58] [Orchestrator] [输入探针] [完成] [启用小艺输入法→中文输入"测试账户"成功]
+[2026-08-18T04:02] [Orchestrator] [深色探针] [完成] [应用内Settings→界面→主题→深色, 重启后生效, bg=#FF121212]
+[2026-08-18T04:04] [Orchestrator] [DB路径探针] [完成] [空态无DB, 待数据创建后定位]
+[2026-08-18T04:05] [Orchestrator] [切回浅色] [完成] [bg=#FFFAF8FE]
+[2026-08-18T04:06] [Orchestrator] [M0完成] [状态→WALKTHROUGH, iter=1] [隔离合规: 全程仅连127.0.0.1:16555]
+[2026-08-18T04:06] [Orchestrator] [进入第1轮WALKTHROUGH] [开始] [TIME_SLICE, P0页面优先]
+[2026-08-18T05:54] [Verifier-1] [验证完成] [4/4通过] [evidence/iter1/verify/verifier_result.json]
+[2026-08-18T05:57] [Orchestrator] [REPORTING iter1] [开始] [更新ledger+生成报告]
+[2026-08-18T05:57] [Orchestrator] [ledger更新] [完成] [UX-0001~0004 → CLOSED]
+[2026-08-18T05:57] [Orchestrator] [归档] [完成] [ledger_iter1.json]
+[2026-08-18T05:57] [Orchestrator] [报告生成] [完成] [iteration_report_v1.md + round_handoff_v1.md]
+[2026-08-18T05:57] [Orchestrator] [iter1完成] [状态→WALKTHROUGH iter=2] [等待用户review][2026-08-19T01:14:45+08:00] [Orchestrator] [iter6-start] [FIXING] 3 DEFERRED items: UX-0027/UX-0028/UX-0029 dark mode contrast

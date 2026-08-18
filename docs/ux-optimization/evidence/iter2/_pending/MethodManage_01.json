@@ -1,0 +1,9 @@
+{
+  "page": "MethodManage",
+  "dimension": "D9",
+  "severity": "P3",
+  "summary": "页面标题'付款方法'与设置入口'管理付款方式'用词不一致，应统一为'付款方式'",
+  "repro": "设置→数据→管理付款方式→页面标题显示'付款方法'",
+  "evidence": ["evidence/iter2/MethodManage/01_list_ui.jpeg", "evidence/iter2/MethodManage/01_list_dump.json"],
+  "foundAt": "2026-08-18T13:45"
+}

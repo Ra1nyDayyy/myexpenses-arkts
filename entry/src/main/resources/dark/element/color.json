@@ -126,7 +126,7 @@
     },
     {
       "name": "dividerColor",
-      "value": "#3A3A3C"
+      "value": "#4A4A4D"
     },
     {
       "name": "tabBarBackground",
@@ -142,7 +142,7 @@
     },
     {
       "name": "textTertiary",
-      "value": "#8A8A8E"
+      "value": "#A8A8AC"
     },
     {
       "name": "summaryCardBackground",
@@ -174,7 +174,7 @@
     },
     {
       "name": "surfaceElevated",
-      "value": "#2C2C2E"
+      "value": "#252528"
     },
     {
       "name": "surfaceBrandSoft",
@@ -190,11 +190,11 @@
     },
     {
       "name": "dividerSubtle",
-      "value": "#1AFFFFFF"
+      "value": "#33FFFFFF"
     },
     {
       "name": "iconSecondary",
-      "value": "#8A8A8E"
+      "value": "#A8A8AC"
     },
     {
       "name": "scrimColor",

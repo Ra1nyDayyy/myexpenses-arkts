@@ -34,7 +34,7 @@ export struct DebtInputDialog {
         })
 
       TextInput({ placeholder: '债务金额', text: this.amount })
-        .type(InputType.Number)
+        .type(InputType.NUMBER_DECIMAL)
         .width('100%')
         .height(44)
         .margin({ top: 12 })

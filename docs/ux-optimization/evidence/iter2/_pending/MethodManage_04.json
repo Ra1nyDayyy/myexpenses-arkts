@@ -1,0 +1,9 @@
+{
+  "page": "MethodManage",
+  "dimension": "D5",
+  "severity": "P2",
+  "summary": "付款方式列表项不可点击编辑，仅支持删除。缺少编辑付款方式名称的功能入口",
+  "repro": "设置→数据→管理付款方式→点击'现金'行→无任何响应，无编辑对话框弹出",
+  "evidence": ["evidence/iter2/MethodManage/04_edit_ui.jpeg", "evidence/iter2/MethodManage/04_edit_dump.json"],
+  "foundAt": "2026-08-18T13:48"
+}

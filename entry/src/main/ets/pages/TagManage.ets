@@ -1,7 +1,7 @@
 import { Tag } from '../model/SupportEntities';
 import { Repository } from '../database/Repository';
 import { PageHeader } from '../components/PageHeader';
-import { router } from '@kit.ArkUI';
+import { router, promptAction } from '@kit.ArkUI';
 
 /**
  * 标签输入对话框（鸿蒙原生 CustomDialog）
@@ -104,16 +104,43 @@ struct TagManage {
   }
 
   private async addTag(label: string): Promise<void> {
-    if (!label.trim()) {
+    const trimmed = label.trim();
+    if (!trimmed) {
+      promptAction.showToast({ message: '请输入标签名称' });
       return;
     }
-    await this.repository.insertTag(label.trim(), 0xFF0050A7);
-    await this.load();
+    try {
+      await this.repository.insertTag(trimmed, 0xFF0050A7);
+      await this.load();
+      promptAction.showToast({ message: '标签已保存' });
+    } catch (e) {
+      promptAction.showToast({ message: `保存失败: ${(e as Error).message}` });
+    }
   }
 
   private async deleteTag(tag: Tag): Promise<void> {
-    await this.repository.deleteTag(tag.id);
-    await this.load();
+    promptAction.showDialog({
+      title: '删除标签',
+      message: `确定删除"${tag.label}"吗？`,
+      buttons: [
+        { text: '取消', color: '#808080' },
+        { text: '删除', color: '#E53935' }
+      ]
+    }).then((result: promptAction.ShowDialogSuccessResponse) => {
+      if (result.index === 1) {
+        this.doDeleteTag(tag.id);
+      }
+    });
+  }
+
+  private async doDeleteTag(tagId: number): Promise<void> {
+    try {
+      await this.repository.deleteTag(tagId);
+      await this.load();
+      promptAction.showToast({ message: '标签已删除' });
+    } catch (e) {
+      promptAction.showToast({ message: `删除失败: ${(e as Error).message}` });
+    }
   }
 
   build() {

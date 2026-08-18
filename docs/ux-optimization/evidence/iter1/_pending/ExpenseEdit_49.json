@@ -1,0 +1,9 @@
+{
+  "page": "ExpenseEdit",
+  "dimension": "D1",
+  "severity": "P1",
+  "summary": "交易行上下文菜单'删除'选项点击无响应，交易未删除也无确认对话框，删除流程阻断",
+  "repro": "交易列表→点交易行金额区→弹菜单(详细信息/编辑/删除)→点删除→无响应，交易仍在",
+  "evidence": ["evidence/iter1/ExpenseEdit/49_delete_confirm_ui.jpeg", "evidence/iter1/ExpenseEdit/49_delete_confirm_dump.json"],
+  "foundAt": "2026-08-18T04:38"
+}

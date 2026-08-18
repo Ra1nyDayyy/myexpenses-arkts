@@ -1,0 +1,9 @@
+{
+  "page": "CategoryManage",
+  "dimension": "D2",
+  "severity": "P2",
+  "summary": "分类列表为扁平名称列表，缺少收入/支出分类Tab切换、分类图标、颜色标识、父子层级显示。Android原版有分类类型区分和图标",
+  "repro": "设置→数据→管理类别→查看分类列表→仅显示纯文本名称，无图标/颜色/类型Tab/层级",
+  "evidence": ["evidence/iter2/CategoryManage/01_list_ui.jpeg", "evidence/iter2/CategoryManage/01_list_dump.json"],
+  "foundAt": "2026-08-18T13:38"
+}

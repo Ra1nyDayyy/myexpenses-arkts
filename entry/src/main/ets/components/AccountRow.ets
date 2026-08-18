@@ -158,7 +158,7 @@ export struct AccountRow {
             this.sumRow('支出', formatMoney(this.account.sumExpense, this.fractionDigits()), $r('app.color.colorExpense'))
           }
           if (this.account.sumTransfer !== 0) {
-            this.sumRow('转帐', formatMoney(this.account.sumTransfer, this.fractionDigits()), $r('app.color.colorTransfer'))
+            this.sumRow('转账', formatMoney(this.account.sumTransfer, this.fractionDigits()), $r('app.color.colorTransfer'))
           }
           Divider()
             .color($r('app.color.dividerColor'))

@@ -1,0 +1,9 @@
+{
+  "page": "SearchPage",
+  "dimension": "D3",
+  "severity": "P1",
+  "summary": "搜索关键字未正确传递到查询条件：输入'餐'和'xyz'执行搜索后，条件均显示'备注(支出) 等于'但不显示关键字值，且均返回'找到1条结果'。搜索结果不随关键字变化",
+  "repro": "交易Tab→复杂搜索→备注→输入'餐'→确定→搜索→找到1条结果→删除条件→备注→输入'xyz'→确定→搜索→仍找到1条结果",
+  "evidence": ["evidence/iter2/SearchPage/03_search_results_ui.jpeg", "evidence/iter2/SearchPage/04_empty_results_ui.jpeg", "evidence/iter2/SearchPage/04_empty_results_dump.json"],
+  "foundAt": "2026-08-18T14:02"
+}

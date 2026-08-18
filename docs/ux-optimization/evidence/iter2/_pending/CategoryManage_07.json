@@ -1,0 +1,9 @@
+{
+  "page": "CategoryManage",
+  "dimension": "D1",
+  "severity": "P1",
+  "summary": "删除分类无确认对话框，点击删除图标后直接删除，误触风险高。Android原版有确认提示",
+  "repro": "设置→数据→管理类别→点击某分类右侧删除(×)图标→分类直接从列表消失，无确认对话框",
+  "evidence": ["evidence/iter2/CategoryManage/07_delete_confirm_ui.jpeg", "evidence/iter2/CategoryManage/07_delete_confirm_dump.json"],
+  "foundAt": "2026-08-18T13:43"
+}

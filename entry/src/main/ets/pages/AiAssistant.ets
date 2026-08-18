@@ -388,14 +388,17 @@ export struct AiAssistant {
     if (text.includes('今天') || text.includes('今晚') || text.includes('晚上') || text.includes('刚刚') || text.includes('刚才')) {
       return toTs(startOfDay(now));
     }
-    // 8月10号 / 8/10 形式
-    const m = text.match(/(\d{1,2})月(\d{1,2})日|\d{1,2}月\d{1,2}|(\d{4})-(\d{1,2})-(\d{1,2})/);
+    // 8月10号 / 8月10日 / 8月10 / 2026-08-10 形式
+    const m = text.match(/(\d{1,2})月(\d{1,2})(?:日|号)?|(\d{4})-(\d{1,2})-(\d{1,2})/);
     if (m) {
       if (m[3] && m[4] && m[5]) {
         return toTs(new Date(Number(m[3]), Number(m[4]) - 1, Number(m[5])));
       }
       const month = Number(m[1]);
       const day = Number(m[2]);
+      if (month < 1 || month > 12 || day < 1 || day > 31) {
+        return toTs(startOfDay(now));
+      }
       const year = month > now.getMonth() + 1 ? now.getFullYear() - 1 : now.getFullYear();
       return toTs(new Date(year, month - 1, day));
     }
@@ -473,7 +476,22 @@ export struct AiAssistant {
   /** 开始录音（AudioCapturer 采集麦克风音频） */
   private async startRecording(): Promise<void> {
     try {
-      // 直接尝试采集（module.json5 已声明 MICROPHONE；模拟器权限状态可能异常，capturer 失败再提示）
+      // 动态申请麦克风权限
+      const context = getContext(this) as common.UIAbilityContext;
+      const atManager = abilityAccessCtrl.createAtManager();
+      try {
+        const permResult = await atManager.requestPermissionsFromUser(context,
+          ['ohos.permission.MICROPHONE'] as Permissions[]);
+        if (permResult && permResult.authResults && permResult.authResults[0] !== 0) {
+          promptAction.showToast({ message: '需要麦克风权限才能语音输入' });
+          return;
+        }
+      } catch (permErr) {
+        hilog.warn(0x0000, 'AiAssistant', 'request MICROPHONE failed: ' + JSON.stringify(permErr));
+        promptAction.showToast({ message: '需要麦克风权限才能语音输入' });
+        return;
+      }
+      // 采集麦克风音频
       const audioStreamInfo: audio.AudioStreamInfo = {
         samplingRate: audio.AudioSamplingRate.SAMPLE_RATE_16000,
         channels: audio.AudioChannel.CHANNEL_1,
@@ -739,13 +757,43 @@ export struct AiAssistant {
         }
         const target = matches[0];
         const changes: string[] = [];
-        const newAmount = Number(intent.fields['amount'] || 0);
+        const newAmount = Number(intent.fields['amount'] || intent.fields['amountMajor'] || 0);
         if (newAmount > 0) {
           changes.push(`金额改为 ${newAmount} 元`);
         }
         const newComment = String(intent.fields['comment'] || '');
         if (newComment && newComment !== target.comment) {
           changes.push(`备注改为「${newComment}」`);
+        }
+        const newCategoryName = String(intent.fields['category'] || '');
+        if (newCategoryName) {
+          const cat = this.categories.find((c: Category) => c.label.includes(newCategoryName));
+          if (cat) {
+            changes.push(`分类改为「${cat.label}」`);
+          } else {
+            changes.push(`分类改为「${newCategoryName}」（未找到匹配分类）`);
+          }
+        }
+        const newDateRaw = intent.fields['date'];
+        if (newDateRaw !== undefined && newDateRaw !== '' && Number(newDateRaw) !== target.date) {
+          let newDateTs: number;
+          if (typeof newDateRaw === 'string' && !/^\d+$/.test(newDateRaw)) {
+            newDateTs = this.parseRelativeDate(newDateRaw);
+          } else {
+            newDateTs = Number(newDateRaw);
+          }
+          if (newDateTs > 0) {
+            changes.push(`日期改为 ${formatDate(newDateTs)}`);
+          }
+        }
+        const newAccountName = String(intent.fields['account'] || '');
+        if (newAccountName) {
+          const acc = this.accounts.find((a: Account) => a.label.includes(newAccountName));
+          if (acc) {
+            changes.push(`账户改为「${acc.label}」`);
+          } else {
+            changes.push(`账户改为「${newAccountName}」（未找到匹配账户）`);
+          }
         }
         if (changes.length === 0) {
           this.pushAiText('未识别到要修改的字段（金额/备注/分类/账户/日期）。');
@@ -808,6 +856,12 @@ export struct AiAssistant {
       if (!this.intentAccount(prepared)) {
         this.pushAiText(this.accounts.length === 0 ?
           '当前没有可用账户，请先创建账户后再记账。' : '指定账户不存在，请重新选择账户。');
+        return;
+      }
+      // 金额上限检查（与 AiExecutionPlan 一致，在预览阶段提前拦截）
+      const previewAmount = Number(prepared.fields['amount'] || 0);
+      if (previewAmount > 99999999.99) {
+        this.pushAiText('金额超过上限（99999999.99 元），请确认金额是否正确。');
         return;
       }
       this.aiIntent = prepared;
@@ -949,10 +1003,16 @@ export struct AiAssistant {
       const isDelete = step.action === 'delete';
       const f: Record<string, string | number> = {};
       if (!isDelete) {
-        const newAmount = Number(step.fields['amount'] || 0);
+        const newAmount = Number(step.fields['amount'] || step.fields['amountMajor'] || 0);
         if (newAmount > 0) { f['amount'] = newAmount; }
         const newComment = String(step.fields['comment'] || '');
         if (newComment) { f['comment'] = newComment; }
+        const newCategory = String(step.fields['category'] || '');
+        if (newCategory) { f['category'] = newCategory; }
+        const newDate = step.fields['date'];
+        if (newDate !== undefined && newDate !== '') { f['date'] = newDate; }
+        const newAccount = String(step.fields['account'] || '');
+        if (newAccount) { f['account'] = newAccount; }
       }
       const stepConfirmAction: PendingAction = {
         type: isDelete ? 'delete' : 'edit',
@@ -1114,9 +1174,7 @@ export struct AiAssistant {
       endTs = new Date(now.getFullYear(), now.getMonth(), 1).getTime() / 1000;
     }
     const accounts = await this.repository.getAccounts();
-    const lines: string[] = [];
-    let total = 0;
-    let count = 0;
+    const matched: Transaction[] = [];
     for (let acc of accounts) {
       if (accountName && !acc.label.includes(accountName)) {
         continue;
@@ -1152,14 +1210,28 @@ export struct AiAssistant {
             continue;
           }
         }
-        count++;
-        total += Math.abs(t.amount);
-        const dateStr = new Date(t.date * 1000).toISOString().slice(0, 10);
-        lines.push(`${dateStr} ${t.amount > 0 ? '收入' : '支出'} ${formatMoney(Math.abs(t.amount), 2)} ${t.comment || ''}`);
-        if (count >= 10) {
-          break;
-        }
+        matched.push(t);
       }
+    }
+    // 排序
+    const sortBy = String(intent.fields['sortBy'] || '');
+    const sortDirection = String(intent.fields['sortDirection'] || '');
+    if (sortBy.includes('金额') || sortBy === 'amount') {
+      matched.sort((a: Transaction, b: Transaction) => Math.abs(a.amount) - Math.abs(b.amount));
+    } else if (sortBy.includes('日期') || sortBy === 'date') {
+      matched.sort((a: Transaction, b: Transaction) => a.date - b.date);
+    }
+    if (sortDirection.includes('降') || sortDirection === 'desc') {
+      matched.reverse();
+    }
+    const lines: string[] = [];
+    let total = 0;
+    let count = 0;
+    for (let t of matched) {
+      count++;
+      total += Math.abs(t.amount);
+      const dateStr = new Date(t.date * 1000).toISOString().slice(0, 10);
+      lines.push(`${dateStr} ${t.amount > 0 ? '收入' : '支出'} ${formatMoney(Math.abs(t.amount), 2)} ${t.comment || ''}`);
       if (count >= 10) {
         break;
       }
@@ -1856,191 +1928,402 @@ export struct AiAssistant {
 
   build() {
     Column() {
-      PageHeader({
-        title: 'AI 记账与洞察',
-        showBack: false,
-        showSpeech: false,
-        rightText: '新建',
-        onRight: () => {
-          this.newConversation();
-        },
-        onBack: () => {
-          router.back();
-        }
-      })
+      // ===== AI 页面 Header =====
+      this.aiHeader()
 
-      // 对话消息列表（ChatGPT 风格）
+      // ===== AI 对话区域 =====
       Scroll() {
         Column({ space: 12 }) {
           ForEach(this.chatMessages, (msg: ChatMessage) => {
             if (msg.role === 'user') {
               this.userBubble(msg.text)
             } else if (msg.kind === 'bill') {
-              this.billBubble()
+              Row({ space: 8 }) {
+                this.aiAvatar()
+                Column() {
+                  this.billBubble()
+                }.layoutWeight(1)
+              }.width('100%').alignItems(VerticalAlign.Top)
             } else if (msg.kind === 'plan') {
-              this.planBubble(msg)
+              Row({ space: 8 }) {
+                this.aiAvatar()
+                Column() {
+                  this.planBubble(msg)
+                }.layoutWeight(1)
+              }.width('100%').alignItems(VerticalAlign.Top)
             } else if (msg.kind === 'thinking') {
-              this.thinkingBubble(msg)
+              Row({ space: 8 }) {
+                this.aiAvatar()
+                Column() {
+                  this.thinkingBubble(msg)
+                }.layoutWeight(1)
+              }.width('100%').alignItems(VerticalAlign.Top)
             } else if (msg.kind === 'confirm') {
-              this.confirmBubble(msg)
+              Row({ space: 8 }) {
+                this.aiAvatar()
+                Column() {
+                  this.confirmBubble(msg)
+                }.layoutWeight(1)
+              }.width('100%').alignItems(VerticalAlign.Top)
             } else if (msg.kind === 'candidates') {
-              this.candidatesBubble()
+              Row({ space: 8 }) {
+                this.aiAvatar()
+                Column() {
+                  this.candidatesBubble()
+                }.layoutWeight(1)
+              }.width('100%').alignItems(VerticalAlign.Top)
             } else {
               this.aiBubble(msg.text)
             }
           }, (msg: ChatMessage, index: number) => `chat_${index}_${msg.kind}_${msg.text}_${msg.stepCtxId || 0}_${msg.confirmStepNo || 0}_${msg.thinkingDone === true ? 'T' : 'P'}`)
         }
         .width('100%')
-        .padding({ left: 16, right: 16, top: 12, bottom: 12 })
+        .padding({ left: 20, right: 20, top: 12, bottom: 12 })
       }
       .width('100%')
       .layoutWeight(1)
       .align(Alignment.Top)
       .scrollBar(BarState.Auto)
+      .edgeEffect(EdgeEffect.Spring)
 
-      // 底部输入栏
-      Column() {
-        // 附件预览（可删除）
-        if (this.chatAttachments.length > 0) {
-          Flex({ wrap: FlexWrap.Wrap }) {
-            ForEach(this.chatAttachments, (uri: string, index: number) => {
-              Stack({ alignContent: Alignment.TopEnd }) {
-                Image(uri)
-                  .width(64)
-                  .height(64)
-                  .borderRadius(8)
-                  .objectFit(ImageFit.Cover)
-                Text('✕')
-                  .fontSize(12)
-                  .fontColor(Color.White)
-                  .width(20)
-                  .height(20)
-                  .textAlign(TextAlign.Center)
-                  .backgroundColor('#99000000')
-                  .borderRadius(10)
-                  .onClick(() => {
-                    this.chatAttachments.splice(index, 1);
-                    this.chatAttachments = [...this.chatAttachments];
-                  })
-              }
-              .width(64)
-              .height(64)
-              .margin({ right: 8, bottom: 8 })
-            }, (uri: string, index: number) => `att_${index}_${uri}`)
-          }
-          .width('100%')
-          .padding({ left: 12, right: 12, top: 8 })
-        }
-
-        Row({ space: 8 }) {
-          // 附件上传按钮
-          Button() {
-            Image($r('sys.media.ohos_ic_public_add'))
-              .width(22)
-              .height(22)
-              .fillColor($r('app.color.iconSecondary'))
-          }
-            .type(ButtonType.Circle)
-            .width(44)
-            .height(44)
-            .backgroundColor(Color.Transparent)
-            .accessibilityText('上传附件')
-            .onClick(() => {
-              this.pickAttachment();
-            })
-          // 麦克风按钮（语音输入）
-          Button() {
-            if (this.isRecording) {
-              Text('●')
-                .fontSize(16)
-                .fontColor(Color.Red)
-            } else {
-              Image($r('app.media.ic_mic'))
-                .width(20)
-                .height(20)
-                .fillColor($r('app.color.iconSecondary'))
-            }
-          }
-            .type(ButtonType.Circle)
-            .width(44)
-            .height(44)
-            .backgroundColor(this.isRecording ? $r('app.color.surfaceBrandSoft') : Color.Transparent)
-            .accessibilityText(this.isRecording ? '停止录音' : '语音输入')
-            .onClick(() => {
-              promptAction.showToast({ message: '麦克风按钮已点击' });
-              if (this.isRecording) {
-                this.stopRecording();
-              } else {
-                this.startRecording();
-              }
-            })
-          TextInput({
-            placeholder: '例如：午饭35元，或问"这个月花了多少"',
-            text: this.chatInput
-          })
-            .layoutWeight(1)
-            .height(44)
-            .fontSize(15)
-            .backgroundColor($r('app.color.cardBackgroundColor'))
-            .borderRadius(22)
-            .padding({ left: 16, right: 16 })
-            .onChange((v: string) => {
-              this.chatInput = v;
-            })
-            .onSubmit(() => {
-              this.sendChatMessage();
-            })
-          Button(this.aiLoading ? '…' : '发送')
-            .height(44)
-            .fontSize(15)
-            .backgroundColor($r('app.color.primaryColor'))
-            .enabled((this.chatInput.trim().length > 0 || this.chatAttachments.length > 0) && !this.aiLoading)
-            .onClick(() => {
-              this.sendChatMessage();
-            })
-        }
-        .width('100%')
-        .padding({ left: 12, right: 12, top: 8, bottom: 8 })
-        .backgroundColor($r('app.color.pageBackground'))
+      // ===== 快捷功能区域（对话较少时显示）=====
+      if (this.chatMessages.length <= 1) {
+        this.quickActions()
       }
-      .width('100%')
+
+      // ===== 输入操作区域 =====
+      this.aiInputBar()
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.pageBackground'))
+    .backgroundColor('#F7F9FC')
   }
 
-  /** 用户消息气泡（右侧） */
+  /** AI 页面 Header：图标 + 标题/副标题 + 新建按钮 */
+  @Builder
+  aiHeader() {
+    Row() {
+      // AI 图标
+      Stack() {
+        Image($r('app.media.ic_ai_robot'))
+          .width(28)
+          .height(28)
+          .fillColor('#0A59F7')
+      }
+      .width(48)
+      .height(48)
+      .borderRadius(14)
+      .backgroundColor('#EDF4FF')
+
+      // 标题 + 副标题
+      Column() {
+        Text('AI 记账与洞察')
+          .fontSize(26)
+          .fontWeight(700)
+          .fontColor('#182431')
+          .maxLines(1)
+        Text('你的智能记账助手')
+          .fontSize(14)
+          .fontColor('#87909A')
+          .margin({ top: 4 })
+      }
+      .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1)
+      .margin({ left: 12 })
+
+      // 新建 Pill Button
+      Button('＋ 新建')
+      .height(40)
+      .fontSize(14)
+      .fontColor('#0A59F7')
+      .backgroundColor('#FFFFFF')
+      .borderRadius(20)
+      .padding({ left: 16, right: 16 })
+      .border({ width: 1, color: '#E8EDF5' })
+      .onClick(() => {
+        this.newConversation();
+      })
+    }
+    .width('100%')
+    .padding({ left: 20, right: 20, top: 16, bottom: 12 })
+    .backgroundColor('#F7F9FC')
+  }
+
+  /** AI 头像（36x36，用于 AI 消息左侧） */
+  @Builder
+  aiAvatar() {
+    Stack() {
+      Image($r('app.media.ic_ai_robot'))
+        .width(20)
+        .height(20)
+        .fillColor('#0A59F7')
+    }
+    .width(36)
+    .height(36)
+    .borderRadius(10)
+    .backgroundColor('#EDF4FF')
+  }
+
+  /** 快捷功能区域：记一笔 + 本月支出 + 收支趋势 */
+  @Builder
+  quickActions() {
+    Row({ space: 10 }) {
+      // 记一笔
+      Column() {
+        Stack() {
+          Image($r('app.media.ic_comment'))
+            .width(20)
+            .height(20)
+            .fillColor('#0A59F7')
+        }
+        .width(36)
+        .height(36)
+        .borderRadius(10)
+        .backgroundColor('#EDF4FF')
+        Text('记一笔')
+          .fontSize(15)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#182431')
+          .margin({ top: 8 })
+        Text('快速记账')
+          .fontSize(12)
+          .fontColor('#87909A')
+      }
+      .layoutWeight(1)
+      .height(80)
+      .padding({ top: 12, bottom: 12 })
+      .backgroundColor('#FFFFFF')
+      .borderRadius(18)
+      .justifyContent(FlexAlign.Center)
+      .onClick(() => {
+        this.chatInput = '';
+        promptAction.showToast({ message: '请输入记账内容，如"午饭35元"' });
+      })
+
+      // 本月支出
+      Column() {
+        Stack() {
+          Image($r('app.media.ic_chart'))
+            .width(20)
+            .height(20)
+            .fillColor('#0A59F7')
+        }
+        .width(36)
+        .height(36)
+        .borderRadius(10)
+        .backgroundColor('#EDF4FF')
+        Text('本月支出')
+          .fontSize(15)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#182431')
+          .margin({ top: 8 })
+        Text('查看分析')
+          .fontSize(12)
+          .fontColor('#87909A')
+      }
+      .layoutWeight(1)
+      .height(80)
+      .padding({ top: 12, bottom: 12 })
+      .backgroundColor('#FFFFFF')
+      .borderRadius(18)
+      .justifyContent(FlexAlign.Center)
+      .onClick(() => {
+        this.chatInput = '这个月花了多少？';
+        this.sendChatMessage();
+      })
+
+      // 收支趋势
+      Column() {
+        Stack() {
+          Image($r('app.media.ic_calculate'))
+            .width(20)
+            .height(20)
+            .fillColor('#0A59F7')
+        }
+        .width(36)
+        .height(36)
+        .borderRadius(10)
+        .backgroundColor('#EDF4FF')
+        Text('收支趋势')
+          .fontSize(15)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#182431')
+          .margin({ top: 8 })
+        Text('近7日趋势')
+          .fontSize(12)
+          .fontColor('#87909A')
+      }
+      .layoutWeight(1)
+      .height(80)
+      .padding({ top: 12, bottom: 12 })
+      .backgroundColor('#FFFFFF')
+      .borderRadius(18)
+      .justifyContent(FlexAlign.Center)
+      .onClick(() => {
+        this.chatInput = '查看最近7天收支趋势';
+        this.sendChatMessage();
+      })
+    }
+    .width('100%')
+    .padding({ left: 20, right: 20, top: 8, bottom: 8 })
+  }
+
+  /** 输入操作区域：+ + 语音 + TextInput + 发送 */
+  @Builder
+  aiInputBar() {
+    Column() {
+      // 附件预览（可删除）
+      if (this.chatAttachments.length > 0) {
+        Flex({ wrap: FlexWrap.Wrap }) {
+          ForEach(this.chatAttachments, (uri: string, index: number) => {
+            Stack({ alignContent: Alignment.TopEnd }) {
+              Image(uri)
+                .width(64)
+                .height(64)
+                .borderRadius(8)
+                .objectFit(ImageFit.Cover)
+              Text('✕')
+                .fontSize(12)
+                .fontColor(Color.White)
+                .width(20)
+                .height(20)
+                .textAlign(TextAlign.Center)
+                .backgroundColor('#99000000')
+                .borderRadius(10)
+                .onClick(() => {
+                  this.chatAttachments.splice(index, 1);
+                  this.chatAttachments = [...this.chatAttachments];
+                })
+            }
+            .width(64)
+            .height(64)
+            .margin({ right: 8, bottom: 8 })
+          }, (uri: string, index: number) => `att_${index}_${uri}`)
+        }
+        .width('100%')
+        .padding({ left: 16, right: 16, top: 8 })
+      }
+
+      Row({ space: 8 }) {
+        // + 更多按钮
+        Button() {
+          Image($r('sys.media.ohos_ic_public_add'))
+            .width(22)
+            .height(22)
+            .fillColor('#182431')
+        }
+        .type(ButtonType.Circle)
+        .width(46)
+        .height(46)
+        .backgroundColor('#FFFFFF')
+        .accessibilityText('上传附件')
+        .onClick(() => {
+          this.pickAttachment();
+        })
+
+        // 语音按钮
+        Button() {
+          if (this.isRecording) {
+            Text('●')
+              .fontSize(16)
+              .fontColor('#0A59F7')
+          } else {
+            Image($r('app.media.ic_mic'))
+              .width(20)
+              .height(20)
+              .fillColor('#182431')
+          }
+        }
+        .type(ButtonType.Circle)
+        .width(46)
+        .height(46)
+        .backgroundColor(this.isRecording ? '#EDF4FF' : '#FFFFFF')
+        .accessibilityText(this.isRecording ? '停止录音' : '语音输入')
+        .onClick(() => {
+          if (this.isRecording) {
+            this.stopRecording();
+          } else {
+            this.startRecording();
+          }
+        })
+
+        // 文本输入框
+        TextInput({
+          placeholder: '例如：午饭35元，打车12元',
+          text: this.chatInput
+        })
+        .layoutWeight(1)
+        .height(48)
+        .fontSize(16)
+        .backgroundColor('#FFFFFF')
+        .borderRadius(24)
+        .padding({ left: 18, right: 18 })
+        .onChange((v: string) => {
+          this.chatInput = v;
+        })
+        .onSubmit(() => {
+          this.sendChatMessage();
+        })
+
+        // 发送按钮
+        Button(this.aiLoading ? '…' : '发送')
+        .height(48)
+        .width(76)
+        .fontSize(15)
+        .fontColor('#FFFFFF')
+        .borderRadius(24)
+        .backgroundColor(
+          (this.chatInput.trim().length > 0 || this.chatAttachments.length > 0) && !this.aiLoading
+            ? '#0A59F7' : '#D8E6FA'
+        )
+        .enabled((this.chatInput.trim().length > 0 || this.chatAttachments.length > 0) && !this.aiLoading)
+        .onClick(() => {
+          this.sendChatMessage();
+        })
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, top: 8, bottom: 8 })
+    }
+    .width('100%')
+    .backgroundColor('#F7F9FC')
+  }
+
+  /** 用户消息气泡（右侧，蓝色） */
   @Builder
   userBubble(text: string) {
     Row() {
       Text(text)
         .fontSize(15)
-        .fontColor(Color.White)
-        .padding({ left: 14, right: 14, top: 10, bottom: 10 })
-        .backgroundColor($r('app.color.primaryColor'))
+        .fontColor('#FFFFFF')
+        .padding({ left: 16, right: 16, top: 10, bottom: 10 })
+        .backgroundColor('#0A59F7')
         .borderRadius(18)
         .constraintSize({ maxWidth: '75%' })
+        .lineHeight(22)
     }
     .width('100%')
     .justifyContent(FlexAlign.End)
   }
 
-  /** AI 文本消息气泡（左侧） */
+  /** AI 文本消息气泡（左侧，含 AI 头像 + 白色气泡） */
   @Builder
   aiBubble(text: string) {
-    Row() {
+    Row({ space: 8 }) {
+      // AI Avatar
+      this.aiAvatar()
+
+      // 白色文本气泡
       Text(text)
         .fontSize(15)
-        .fontColor($r('app.color.textPrimary'))
-        .padding({ left: 14, right: 14, top: 10, bottom: 10 })
-        .backgroundColor($r('app.color.cardBackgroundColor'))
+        .fontColor('#182431')
+        .padding({ left: 16, right: 16, top: 10, bottom: 10 })
+        .backgroundColor('#FFFFFF')
         .borderRadius(18)
-        .constraintSize({ maxWidth: '80%' })
+        .constraintSize({ maxWidth: '75%' })
         .lineHeight(22)
     }
     .width('100%')
-    .justifyContent(FlexAlign.Start)
+    .alignItems(VerticalAlign.Top)
   }
 
   /** 待确认账单气泡（左侧，含预览与操作） */
@@ -2407,13 +2690,18 @@ export struct AiAssistant {
       } else if (act.type === 'accountDelete') {
         const accId = Number(act.fields['accountId'] || 0);
         const accName = String(act.fields['comment'] || '');
-        await this.repository.deleteAccount(accId);
-        this.pushAiText(`已删除账户「${accName}」。`);
+        const txCount = (await this.repository.getTransactions(accId)).length;
+        if (txCount > 0) {
+          this.pushAiText(`账户「${accName}」下有 ${txCount} 笔交易，为保护数据一致性已取消删除。请先在账户页处理相关交易后再删除账户。`);
+        } else {
+          await this.repository.deleteAccount(accId);
+          this.pushAiText(`已删除账户「${accName}」。`);
+        }
       } else if (act.type === 'delete') {
         await this.repository.deleteTransaction(target.id);
         this.pushAiText(`已删除交易「${target.comment || '无备注'}」${formatMoney(Math.abs(target.amount), 2)} 元。`);
       } else {
-        const newAmount = Number(act.fields['amount'] || 0);
+        const newAmount = Number(act.fields['amount'] || act.fields['amountMajor'] || 0);
         if (newAmount > 0) {
           const sign = target.amount >= 0 ? 1 : -1;
           target.amount = sign * Math.round(newAmount * 100);
@@ -2422,10 +2710,42 @@ export struct AiAssistant {
         if (newComment) {
           target.comment = newComment;
         }
+        const newCategoryName = String(act.fields['category'] || '');
+        if (newCategoryName) {
+          const cats = await this.repository.getCategories();
+          const cat = cats.find((c: Category) => c.label.includes(newCategoryName));
+          if (cat) {
+            target.categoryId = cat.id;
+          }
+        }
+        const newDateRaw = act.fields['date'];
+        if (newDateRaw !== undefined && newDateRaw !== '' && Number(newDateRaw) !== target.date) {
+          let newDateTs: number;
+          if (typeof newDateRaw === 'string' && !/^\d+$/.test(String(newDateRaw))) {
+            newDateTs = this.parseRelativeDate(String(newDateRaw));
+          } else {
+            newDateTs = Number(newDateRaw);
+          }
+          if (newDateTs > 0) {
+            target.date = newDateTs;
+            target.valueDate = newDateTs;
+          }
+        }
+        const newAccountName = String(act.fields['account'] || '');
+        if (newAccountName) {
+          const acc = this.accounts.find((a: Account) => a.label.includes(newAccountName));
+          if (acc) {
+            target.accountId = acc.id;
+            target.currency = acc.currency;
+          }
+        }
         await this.repository.updateTransaction(target);
         const changes: string[] = [];
         if (newAmount > 0) { changes.push(`金额改为 ${newAmount} 元`); }
         if (newComment) { changes.push(`备注改为「${newComment}」`); }
+        if (newCategoryName) { changes.push(`分类改为「${newCategoryName}」`); }
+        if (newDateRaw !== undefined && newDateRaw !== '') { changes.push(`日期已修改`); }
+        if (newAccountName) { changes.push(`账户改为「${newAccountName}」`); }
         this.pushAiText(`已修改交易：${changes.join('，')}。`);
       }
       this.removeConfirmBubble(act);

@@ -1,0 +1,9 @@
+{
+  "page": "MethodManage",
+  "dimension": "D1",
+  "severity": "P1",
+  "summary": "删除付款方式无确认对话框，点击删除图标后直接删除，误触风险高。'现金'默认付款方式也被直接删除",
+  "repro": "设置→数据→管理付款方式→点击'现金'右侧删除图标→'现金'直接从列表消失，无确认对话框",
+  "evidence": ["evidence/iter2/MethodManage/05_delete_ui.jpeg", "evidence/iter2/MethodManage/05_delete_dump.json"],
+  "foundAt": "2026-08-18T13:49"
+}

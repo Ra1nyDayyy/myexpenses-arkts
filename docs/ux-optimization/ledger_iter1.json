@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "items": [
+    {
+      "id": "UX-0001",
+      "iter": 1,
+      "page": "Index",
+      "dimension": "D9",
+      "severity": "P2",
+      "status": "CLOSED",
+      "summary": "交易Tab汇总区'转帐'应为'转账'（帐→账错别字）",
+      "repro": "首页→交易Tab→查看收入/支出/转帐汇总标签",
+      "evidence": ["evidence/iter1/Index/07_tab_txn_ui.jpeg", "evidence/iter1/Index/07_tab_txn_dump.json"],
+      "fixer": "Fixer-1",
+      "fixFiles": [
+        "entry/src/main/resources/base/element/string.json",
+        "entry/src/main/ets/pages/Index.ets",
+        "entry/src/main/ets/components/AccountDetailDialog.ets",
+        "entry/src/main/ets/components/AccountRow.ets"
+      ],
+      "fixNote": "将6处'转帐'改为'转账'（帐→账错别字）：string.json L37/L101/L137, Index.ets L2460, AccountDetailDialog.ets L83, AccountRow.ets L161",
+      "verifiedBy": "Verifier-1",
+      "verifyEvidence": ["evidence/iter1/verify/V1_text_fix_ui.jpeg", "evidence/iter1/verify/V1_text_fix_dump.json"],
+      "regressionRisk": "none",
+      "deferReason": "",
+      "openedAt": "2026-08-18T04:17",
+      "closedAt": "2026-08-18T05:54",
+      "auditedAt": "2026-08-18T04:50"
+    },
+    {
+      "id": "UX-0002",
+      "iter": 1,
+      "page": "ExpenseEdit",
+      "dimension": "D1",
+      "severity": "P1",
+      "status": "CLOSED",
+      "summary": "转账表单'至：选择'目标账户Select组件点击无响应，无法选择目标账户，转账流程阻断",
+      "repro": "ExpenseEdit→点转账Tab→输入金额→点'至'行Select组件(1039,780)→无下拉/无响应",
+      "evidence": ["evidence/iter1/ExpenseEdit/21_transfer_form_ui.jpeg", "evidence/iter1/ExpenseEdit/24_transfer_target_list_ui.jpeg", "evidence/iter1/ExpenseEdit/24b_transfer_select_state_ui.jpeg"],
+      "fixer": "Fixer-2",
+      "fixFiles": [
+        "entry/src/main/ets/pages/ExpenseEdit.ets"
+      ],
+      "fixNote": "transferAccounts() 在仅一个账户时返回空列表，Select 无选项导致点击无响应。改为空列表时显示提示文本'请先创建另一个账户'，有选项时正常渲染 Select。",
+      "verifiedBy": "Verifier-1",
+      "verifyEvidence": ["evidence/iter1/verify/V2_transfer_hint_ui.jpeg", "evidence/iter1/verify/V2_transfer_hint_dump.json"],
+      "regressionRisk": "none",
+      "deferReason": "",
+      "openedAt": "2026-08-18T04:30",
+      "closedAt": "2026-08-18T05:54",
+      "auditedAt": "2026-08-18T04:50"
+    },
+    {
+      "id": "UX-0003",
+      "iter": 1,
+      "page": "ExpenseEdit",
+      "dimension": "D3",
+      "severity": "P2",
+      "status": "CLOSED",
+      "summary": "编辑交易有未保存修改时按Back键直接退出，无'确认放弃修改'对话框，易丢失修改",
+      "repro": "交易列表→点交易→编辑→改金额→按Back→直接返回列表，修改丢失无确认",
+      "evidence": ["evidence/iter1/ExpenseEdit/26_edit_form_ui.jpeg", "evidence/iter1/ExpenseEdit/28c_edit_state_ui.jpeg"],
+      "fixer": "Fixer-2",
+      "fixFiles": [
+        "entry/src/main/ets/pages/ExpenseEdit.ets"
+      ],
+      "fixNote": "ExpenseEdit 缺少 onBackPress 处理。新增原始值快照（captureSnapshot）、hasUnsavedChanges() 比较、handleBack() 弹确认对话框、onBackPress() 拦截系统返回键，并将 PageHeader 的 onBack 回调改为走 handleBack。",
+      "verifiedBy": "Verifier-1",
+      "verifyEvidence": ["evidence/iter1/verify/V3_back_confirm_ui.jpeg", "evidence/iter1/verify/V3_back_confirm_dump.json"],
+      "regressionRisk": "none",
+      "deferReason": "",
+      "openedAt": "2026-08-18T04:34",
+      "closedAt": "2026-08-18T05:54",
+      "auditedAt": "2026-08-18T04:50"
+    },
+    {
+      "id": "UX-0004",
+      "iter": 1,
+      "page": "ExpenseEdit",
+      "dimension": "D1",
+      "severity": "P1",
+      "status": "CLOSED",
+      "summary": "交易行上下文菜单'删除'选项点击无响应，交易未删除也无确认对话框，删除流程阻断",
+      "repro": "交易列表→点交易行金额区→弹菜单(详细信息/编辑/删除)→点删除→无响应，交易仍在",
+      "evidence": ["evidence/iter1/ExpenseEdit/49_delete_confirm_ui.jpeg", "evidence/iter1/ExpenseEdit/49_delete_confirm_dump.json"],
+      "fixer": "Fixer-2",
+      "fixFiles": [
+        "entry/src/main/ets/pages/Index.ets"
+      ],
+      "fixNote": "confirmDeleteTransaction/deleteSelected 原用 getUIContext().showAlertDialog 的 secondaryButton.action 回调不触发。改用 promptAction.showDialog（与已验证有效的 deleteAccount 写法一致），通过 then(result.index) 处理按钮点击。",
+      "verifiedBy": "Verifier-1",
+      "verifyEvidence": ["evidence/iter1/verify/V4_dialog_dump.json", "evidence/iter1/verify/V4_delete_works_ui.jpeg", "evidence/iter1/verify/V4_delete_works_dump.json"],
+      "regressionRisk": "rerun: TX-12",
+      "deferReason": "",
+      "openedAt": "2026-08-18T04:38",
+      "closedAt": "2026-08-18T05:54",
+      "auditedAt": "2026-08-18T04:50"
+    },
+    {
+      "id": "UX-0005",
+      "iter": 1,
+      "page": "ExpenseEdit",
+      "dimension": "D4",
+      "severity": "P2",
+      "status": "DEFERRED",
+      "summary": "编辑交易时金额输入框输入文本为追加而非替换，用户需先清空再输入，体验不佳",
+      "repro": "交易列表→编辑交易→点金额输入框(已有值20.00)→输入30→变为3020.00而非30",
+      "evidence": ["evidence/iter1/ExpenseEdit/26_edit_form_ui.jpeg"],
+      "fixer": "Fixer-2",
+      "fixFiles": [],
+      "fixNote": "ArkUI TextInput 不支持 selectAllOnFocus/selectAll API，DEFERRED 到下一轮用替代方案处理",
+      "verifiedBy": null,
+      "verifyEvidence": [],
+      "regressionRisk": "none",
+      "deferReason": "ArkUI TextInputAttribute 无 selectAllOnFocus 属性，TextInputController 无 selectAll 方法，需下一轮用 onFocus+caretPosition 替代方案",
+      "openedAt": "2026-08-18T04:50",
+      "closedAt": "2026-08-18T05:10",
+      "auditedAt": "2026-08-18T04:50"
+    }
+  ],
+  "nextId": 6,
+  "updatedAt": "2026-08-18T05:57:00+08:00",
+  "blockedItems": [
+    {
+      "id": "BLK-001",
+      "page": "AiAssistant",
+      "reason": "组4走查因专用实例16555断开未完成，AI对话流程未验证（LLM-DEPENDENT+设备中断）",
+      "deferTo": "iter2",
+      "evidence": ["evidence/iter1/AiAssistant/03_main_ui.jpeg", "evidence/iter1/AiAssistant/03_main_dump.json"]
+    }
+  ]
+}

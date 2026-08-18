@@ -1,0 +1,9 @@
+{
+  "page": "History",
+  "dimension": "D3",
+  "severity": "P1",
+  "summary": "历史记录页面8月显示收入支出均为¥0.00，但实际8月有餐饮支出¥50.00，数据不一致",
+  "repro": "交易Tab→右上角菜单→历史记录→查看8月数据",
+  "evidence": ["evidence/iter2/History/01_entry_ui.jpeg", "evidence/iter2/History/03_month_click_ui.jpeg"],
+  "foundAt": "2026-08-18T14:16"
+}

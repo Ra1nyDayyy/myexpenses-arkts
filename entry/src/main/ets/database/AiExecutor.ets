@@ -155,6 +155,12 @@ export class AiExecutor {
     }
     if (action === 'create') {
       const name = String(intent.fields['name'] || 'AI 账户');
+      // 重名检查：已存在同名账户时不静默重复创建
+      const existingAccounts = await this.repository.getAccounts();
+      const duplicate = existingAccounts.find((a: Account) => a.label === name);
+      if (duplicate) {
+        return `已存在同名账户「${name}」（${duplicate.currency}），未重复创建。如需创建不同币种的账户，请在名称上加以区分。`;
+      }
       const acc = new Account();
       acc.label = name;
       acc.currency = String(intent.fields['currency'] || 'CNY');
@@ -311,7 +317,16 @@ export class AiExecutor {
       }
       const tpl = new Template();
       tpl.title = String(intent.fields['title'] || 'AI 模板');
-      tpl.accountId = accounts[0].id;
+      // 账户：优先按名称映射用户指定账户，其次按数字 id，最后默认第一个
+      const tplAccountName = String(intent.fields['account'] || '');
+      const tplRequestedAccountId = Number(intent.fields['accountId'] || 0);
+      let tplAccount: Account | null = null;
+      if (tplAccountName.length > 0) {
+        tplAccount = accounts.find((a: Account) => a.label.includes(tplAccountName)) || null;
+      } else if (tplRequestedAccountId > 0) {
+        tplAccount = accounts.find((a: Account) => a.id === tplRequestedAccountId) || null;
+      }
+      tpl.accountId = tplAccount ? tplAccount.id : accounts[0].id;
       const type = String(intent.fields['type'] || 'expense');
       const amount = Number(intent.fields['amount'] || 0);
       tpl.amount = Math.round(amount * 100) * (type === 'income' ? 1 : -1);
@@ -352,6 +367,28 @@ export class AiExecutor {
         return `已按模板「${tpl.title}」创建交易 ${formatMoney(Math.abs(tpl.amount), 2)} 元`;
       }
       return '模板创建交易失败';
+    }
+    if (action === 'query') {
+      const templates = await this.repository.getTemplates();
+      if (templates.length === 0) {
+        return '当前没有模板记录';
+      }
+      const accounts = await this.repository.getAccounts();
+      const categories = await this.repository.getCategories();
+      const lines: string[] = [];
+      for (let tpl of templates) {
+        const acc = accounts.find((a: Account) => a.id === tpl.accountId);
+        const cat = tpl.categoryId >= 0 ? categories.find((c: Category) => c.id === tpl.categoryId) : null;
+        const typeLabel = tpl.isIncome ? '收入' : '支出';
+        const recurrenceLabel = tpl.recurrence === 2 ? '每天' :
+          (tpl.recurrence === 3 ? '每周' :
+          (tpl.recurrence === 4 ? '每月' :
+          (tpl.recurrence === 6 ? '每年' : '')));
+        const accLabel = acc ? acc.label : '未知账户';
+        const catLabel = cat ? cat.label : '未分类';
+        lines.push(`${tpl.title}：${typeLabel} ${formatMoney(Math.abs(tpl.amount), 2)} 元（${accLabel}·${catLabel}${recurrenceLabel ? '·' + recurrenceLabel : ''}${tpl.comment ? '·' + tpl.comment : ''}）`);
+      }
+      return `共 ${templates.length} 个模板：\n${lines.join('\n')}`;
     }
     return `暂不支持的模板操作：${action}`;
   }

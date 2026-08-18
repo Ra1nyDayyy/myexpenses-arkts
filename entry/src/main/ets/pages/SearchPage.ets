@@ -32,6 +32,8 @@ import { EmptyState } from '../components/EmptyState';
     @State searched: boolean = false;
     /** 搜索模式：0=快速搜索（简单），1=复杂搜索（对齐安卓 preferredSearchType） */
     @State searchType: number = 1;
+    /** 快速搜索关键字 */
+    @State quickKeyword: string = '';
     private repository: Repository = Repository.getInstance();
     /** 账户列表缓存（账户搜索条件用） */
     @State accountList: Account[] = [];
@@ -268,6 +270,31 @@ import { EmptyState } from '../components/EmptyState';
   @Builder
   quickSearchList() {
     Column() {
+      // 关键字快速搜索框
+      Row() {
+        TextInput({ placeholder: '输入关键字搜索备注...', text: this.quickKeyword })
+          .layoutWeight(1)
+          .height(48)
+          .backgroundColor($r('app.color.surfaceSecondary'))
+          .borderRadius($r('app.float.native_card_radius'))
+          .onChange((v: string) => {
+            this.quickKeyword = v;
+          })
+          .onSubmit(() => {
+            this.executeQuickSearch();
+          })
+        Button('搜索')
+          .height(44)
+          .margin({ left: 8 })
+          .backgroundColor($r('app.color.primaryColor'))
+          .fontColor(Color.White)
+          .onClick(() => {
+            this.executeQuickSearch();
+          })
+      }
+      .width('100%')
+      .padding({ left: 4, right: 4, bottom: 12 })
+
       this.quickRow('金额', $r('app.media.ic_amount'), 'amount')
       this.quickRow('备注', $r('app.media.ic_comment'), 'comment')
       this.quickRow('收款人', $r('app.media.ic_payee'), 'payee')
@@ -279,6 +306,15 @@ import { EmptyState } from '../components/EmptyState';
       this.quickRow('标签', $r('app.media.ic_tag'), 'tag')
     }
     .width('100%')
+  }
+
+  /** 快速关键字搜索 */
+  private async executeQuickSearch(): Promise<void> {
+    if (!this.quickKeyword.trim()) {
+      return;
+    }
+    this.criteria = [{ type: 'comment', op: '包含', value: this.quickKeyword.trim() } as SearchCriterion];
+    await this.executeSearch();
   }
 
   /** 复杂搜索条件按钮（对齐安卓：图标文字扁平样式，两行排列覆盖全部条件） */
@@ -380,21 +416,8 @@ import { EmptyState } from '../components/EmptyState';
 
   /** 快速搜索条件输入对话框 */
   private showQuickCriteriaDialog(type: string, label: string): void {
-    this.getUIContext().showAlertDialog({
-      title: `搜索${label}`,
-      message: `输入${label}搜索条件`,
-      primaryButton: {
-        value: '取消',
-        action: () => {
-        }
-      },
-      secondaryButton: {
-        value: '确定',
-        action: () => {
-          this.addCriterion({ type: type, op: '等于', value: label });
-        }
-      }
-    });
+    // 直接复用复杂搜索条件对话框，确保用户可以输入关键字
+    this.showCriterionDialog(type);
   }
 
   /** 搜索结果列表 */

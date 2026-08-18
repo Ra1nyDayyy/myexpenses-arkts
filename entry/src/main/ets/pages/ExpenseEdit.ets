@@ -61,6 +61,20 @@ struct ExpenseEdit {
   @State latitude: number = 0;
   @State longitude: number = 0;
 
+
+  // 编辑模式原始值快照（用于检测未保存修改，对齐安卓 BackPress 确认放弃修改）
+  private snapshotAmount: string = '';
+  private snapshotComment: string = '';
+  private snapshotPayee: string = '';
+  private snapshotCategoryId: number = -1;
+  private snapshotMethodId: number = -1;
+  private snapshotTransferAccountId: number = -1;
+  private snapshotDate: number = 0;
+  private snapshotCrStatus: CrStatus = CrStatus.UNRECONCILED;
+  private snapshotIsIncome: boolean = false;
+  private snapshotReferenceNumber: string = '';
+  private snapshotTagIds: number[] = [];
+
   private repository: Repository = Repository.getInstance();
   @State accounts: Account[] = [];
   @State categories: Category[] = [];
@@ -166,6 +180,12 @@ struct ExpenseEdit {
       this.tagIds = selectedTags;
       AppStorage.delete('selectedTags');
     }
+    // 付款方式选择回传（从 MethodSelect 返回后读取）
+    const selectedMethodId = AppStorage.get<number>('selectedMethodId');
+    if (selectedMethodId !== undefined && selectedMethodId !== null) {
+      this.methodId = selectedMethodId;
+      AppStorage.delete('selectedMethodId');
+    }
   }
 
   async loadData(): Promise<void> {
@@ -255,7 +275,77 @@ struct ExpenseEdit {
         this.operationType = OperationType.TRANSFER;
         this.transferAccountId = t.transferAccountId;
       }
+      // 保存原始值快照，用于检测未保存修改（对齐安卓 BackPress 确认）
+      this.captureSnapshot();
     }
+  }
+
+  /**
+   * 捕获当前表单值快照（在加载已有交易后调用，作为"原始值"基准）
+   */
+  private captureSnapshot(): void {
+    this.snapshotAmount = this.amountInput;
+    this.snapshotComment = this.comment;
+    this.snapshotPayee = this.payeeInput;
+    this.snapshotCategoryId = this.selectedCategoryId;
+    this.snapshotMethodId = this.methodId;
+    this.snapshotTransferAccountId = this.transferAccountId;
+    this.snapshotDate = this.date;
+    this.snapshotCrStatus = this.crStatus;
+    this.snapshotIsIncome = this.isIncome;
+    this.snapshotReferenceNumber = this.referenceNumber;
+    this.snapshotTagIds = [...this.tagIds];
+  }
+
+  /**
+   * 检测是否有未保存修改（编辑模式：比较当前值与原始快照）
+   */
+  private hasUnsavedChanges(): boolean {
+    if (this.transactionId <= 0 || this.isTemplate) {
+      return false;
+    }
+    return this.amountInput !== this.snapshotAmount
+      || this.comment !== this.snapshotComment
+      || this.payeeInput !== this.snapshotPayee
+      || this.selectedCategoryId !== this.snapshotCategoryId
+      || this.methodId !== this.snapshotMethodId
+      || this.transferAccountId !== this.snapshotTransferAccountId
+      || this.date !== this.snapshotDate
+      || this.crStatus !== this.snapshotCrStatus
+      || this.isIncome !== this.snapshotIsIncome
+      || this.referenceNumber !== this.snapshotReferenceNumber
+      || this.tagIds.length !== this.snapshotTagIds.length
+      || this.tagIds.some((id: number) => this.snapshotTagIds.indexOf(id) < 0);
+  }
+
+  /**
+   * 返回处理：有未保存修改时弹确认对话框（对齐安卓 onBackPressed 确认放弃修改）
+   */
+  private handleBack(): void {
+    if (this.hasUnsavedChanges()) {
+      this.getUIContext().showAlertDialog({
+        title: '放弃修改？',
+        message: '当前修改尚未保存，确定要放弃并退出吗？',
+        primaryButton: {
+          value: '继续编辑',
+          action: () => {
+          }
+        },
+        secondaryButton: {
+          value: '放弃',
+          action: () => {
+            router.back();
+          }
+        }
+      });
+    } else {
+      router.back();
+    }
+  }
+
+  onBackPress(): boolean {
+    this.handleBack();
+    return true;
   }
 
   private fractionDigits(): number {
@@ -629,6 +719,24 @@ struct ExpenseEdit {
   }
 
   /**
+   * 弹出付款方式选择页面（对齐安卓 MethodRow 点击：弹出选择列表）
+   * 选择结果通过 onPageShow 读取 AppStorage('selectedMethodId') 回传
+   */
+  private showMethodPicker(): void {
+    if (this.methods.length === 0) {
+      promptAction.showToast({ message: '暂无可用付款方式，请先在设置中添加' });
+      return;
+    }
+    router.pushUrl({
+      url: 'pages/MethodSelect',
+      params: {
+        selectedMethodId: this.methodId
+      }
+    }).catch(() => {
+    });
+  }
+
+  /**
    * 标签 id → 标签名
    */
   private tagLabel(tagId: number): string {
@@ -904,7 +1012,7 @@ struct ExpenseEdit {
         showTemplates: !this.isTemplate,
         titleMenu: this.isTemplate ? this.templateTypeMenu() : [],
         onBack: () => {
-          router.back();
+          this.handleBack();
         },
         onMore: () => {
         },
@@ -1000,14 +1108,23 @@ struct ExpenseEdit {
                 .fontSize(14)
                 .fontColor($r('app.color.textPrimary'))
                 .width('30%')
-              Text(this.transferAccountLabel())
-                .fontSize(16)
-                .layoutWeight(1)
-              Select(this.transferAccountOptions())
-                .selected(this.transferAccountIndex())
-                .onSelect((index: number) => {
-                  this.transferAccountId = this.transferAccounts()[index].id;
-                })
+              // 仅一个账户时无目标账户可选：显示提示而非空 Select（避免点击无响应）
+              if (this.transferAccounts().length === 0) {
+                Text('请先创建另一个账户')
+                  .fontSize(14)
+                  .fontColor($r('app.color.textSecondary'))
+                  .layoutWeight(1)
+                  .textAlign(TextAlign.End)
+              } else {
+                Text(this.transferAccountLabel())
+                  .fontSize(16)
+                  .layoutWeight(1)
+                Select(this.transferAccountOptions())
+                  .selected(this.transferAccountIndex())
+                  .onSelect((index: number) => {
+                    this.transferAccountId = this.transferAccounts()[index].id;
+                  })
+              }
             }
           .width('100%')
           .height(48)
@@ -1082,6 +1199,8 @@ struct ExpenseEdit {
               .type(InputType.NUMBER_DECIMAL)
               .layoutWeight(1)
               .textAlign(TextAlign.End)
+              // UX-0005: 编辑/模板编辑模式获得焦点时全选金额，对齐安卓 EditText.selectAllOnFocus（ArkUI TextInputAttribute.selectAll since API 12）
+              .selectAll(this.transactionId > 0 || (this.isTemplate && this.templateId > 0))
               .onChange((v: string) => {
                 this.amountInput = v;
               })
@@ -1300,6 +1419,9 @@ struct ExpenseEdit {
           .width('100%')
           .padding({ left: 16, right: 16, top: 8, bottom: 8 })
           .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
+          .onClick(() => {
+            this.navigateToTagSelection();
+          })
 
           // 付款方法（转账隐藏；模板模式下仅拆分模板显示，对齐安卓：交易/转账模板无付款方法）
           Row() {
@@ -1321,6 +1443,9 @@ struct ExpenseEdit {
           .width('100%')
           .height(48)
           .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
+          .onClick(() => {
+            this.showMethodPicker();
+          })
 
           // 备注
           Row() {

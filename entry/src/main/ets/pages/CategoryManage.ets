@@ -11,9 +11,14 @@ export struct CategoryInputDialog {
   controller?: CustomDialogController;
   title: string = '新建分类';
   placeholder: string = '分类名称';
+  initialLabel: string = '';
   @State label: string = '';
   onConfirm: (label: string) => void = () => {
   };
+
+  aboutToAppear(): void {
+    this.label = this.initialLabel;
+  }
 
   build() {
     Column() {
@@ -64,6 +69,8 @@ struct CategoryManage {
   @State categories: Category[] = [];
   @State expandedIds: number[] = [];
   @State dragEditMode: boolean = false;
+  /** 分类类型筛选：0=全部, -1=支出, 1=收入 */
+  @State catFilter: number = 0;
 
   private repository: Repository = Repository.getInstance();
   private editTarget: Category | null = null;
@@ -97,6 +104,29 @@ struct CategoryManage {
     return this.expandedIds.indexOf(id) >= 0;
   }
 
+  /**
+   * 将 Android 0xAARRGGBB 颜色值转换为 ArkUI ResourceColor
+   * color === 0 时回退到次级文字色，避免显示透明黑
+   */
+  private colorToResourceColor(color: number): ResourceColor {
+    if (color === 0) {
+      return $r('app.color.textSecondary');
+    }
+    const c = color & 0xFFFFFF;
+    return `#${c.toString(16).padStart(6, '0')}` as ResourceColor;
+  }
+
+  /**
+   * 按 catFilter 过滤根分类列表
+   * 0=全部 / -1=支出 / 1=收入
+   */
+  private getFilteredCategories(): Category[] {
+    if (this.catFilter === 0) {
+      return this.categories;
+    }
+    return this.categories.filter((cat: Category) => cat.type === this.catFilter);
+  }
+
   private toggleExpand(id: number): void {
     animateTo({ duration: 200, curve: Curve.EaseInOut }, () => {
       const idx = this.expandedIds.indexOf(id);
@@ -128,6 +158,7 @@ struct CategoryManage {
     this.dialog = new CustomDialogController({
       builder: CategoryInputDialog({
         title: target ? '编辑分类' : '新建分类',
+        initialLabel: target ? target.label : '',
         onConfirm: (label: string) => {
           this.addCategory(label, parentId);
         }
@@ -141,6 +172,21 @@ struct CategoryManage {
   }
 
   private async deleteCategory(cat: Category): Promise<void> {
+    promptAction.showDialog({
+      title: '删除分类',
+      message: `确定删除分类"${cat.label}"吗？`,
+      buttons: [
+        { text: '取消', color: '#808080' },
+        { text: '删除', color: '#E53935' }
+      ]
+    }).then((result: promptAction.ShowDialogSuccessResponse) => {
+      if (result.index === 1) {
+        this.executeDeleteCategory(cat);
+      }
+    });
+  }
+
+  private async executeDeleteCategory(cat: Category): Promise<void> {
     await this.repository.deleteCategory(cat.id);
     promptAction.showToast({ message: $r('app.string.toast_deleted') });
     await this.load();
@@ -159,12 +205,24 @@ struct CategoryManage {
         }
       })
 
+      // 支出/收入/全部 分段切换栏（对齐安卓 Tab 风格）
+      Row({ space: 0 }) {
+        this.filterSegment('全部', 0)
+        this.filterSegment('支出', -1)
+        this.filterSegment('收入', 1)
+      }
+      .width(300)
+      .height(36)
+      .borderRadius(18)
+      .border({ width: 1, color: $r('app.color.dividerColor') })
+      .margin({ top: 12, bottom: 8 })
+
       List({ space: 8 }) {
-        ForEach(this.categories, (cat: Category) => {
+        ForEach(this.getFilteredCategories(), (cat: Category) => {
           ListItem() {
             this.categoryRow(cat, 0)
           }
-        }, (cat: Category) => `root_${cat.id}`)
+        }, (cat: Category) => `root_${this.catFilter}_${cat.id}`)
       }
       .layoutWeight(1)
       .width('100%')
@@ -203,6 +261,22 @@ struct CategoryManage {
   }
 
   @Builder
+  filterSegment(label: string, value: number) {
+    Text(label)
+      .fontSize(14)
+      .fontWeight(this.catFilter === value ? FontWeight.Medium : FontWeight.Normal)
+      .fontColor(this.catFilter === value ? Color.White : $r('app.color.textSecondary'))
+      .backgroundColor(this.catFilter === value ? $r('app.color.primaryColor') : Color.Transparent)
+      .layoutWeight(1)
+      .height('100%')
+      .textAlign(TextAlign.Center)
+      .borderRadius(18)
+      .onClick(() => {
+        this.catFilter = value;
+      })
+  }
+
+  @Builder
   categoryRow(cat: Category, depth: number) {
     Column() {
       Row() {
@@ -217,11 +291,49 @@ struct CategoryManage {
           Blank()
             .width(16)
         }
+
+        // 分类图标：优先 emoji，其次颜色圆点，最后占位
+        if (cat.icon && cat.icon.length > 0) {
+          Text(cat.icon)
+            .fontSize(20)
+            .width(32)
+            .height(32)
+            .textAlign(TextAlign.Center)
+        } else if (cat.color !== 0) {
+          Circle()
+            .width(20)
+            .height(20)
+            .fill(this.colorToResourceColor(cat.color))
+            .margin({ left: 4, right: 8 })
+        } else {
+          Blank()
+            .width(32)
+        }
+
         Text(cat.label)
           .fontSize(16)
           .fontWeight(FontWeight.Medium)
           .layoutWeight(1)
           .margin({ left: 4 })
+
+        // 类型小标签：支出/收入 用不同颜色区分
+        if (cat.type === -1) {
+          Text('支出')
+            .fontSize(11)
+            .fontColor($r('app.color.colorExpense'))
+            .padding({ left: 6, right: 6, top: 2, bottom: 2 })
+            .borderRadius(4)
+            .backgroundColor($r('app.color.surfaceExpenseSoft'))
+            .margin({ right: 8 })
+        } else if (cat.type === 1) {
+          Text('收入')
+            .fontSize(11)
+            .fontColor($r('app.color.colorIncome'))
+            .padding({ left: 6, right: 6, top: 2, bottom: 2 })
+            .borderRadius(4)
+            .backgroundColor($r('app.color.surfaceIncomeSoft'))
+            .margin({ right: 8 })
+        }
 
         Image($r('sys.media.ohos_ic_public_add'))
           .width(18)

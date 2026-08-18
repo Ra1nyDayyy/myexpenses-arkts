@@ -1,0 +1,9 @@
+{
+  "page": "ExpenseEdit",
+  "dimension": "D1",
+  "severity": "P1",
+  "summary": "转账表单'至：选择'目标账户Select组件点击无响应，无法选择目标账户，转账流程阻断",
+  "repro": "ExpenseEdit→点转账Tab→输入金额→点'至'行Select组件(1039,780)→无下拉/无响应",
+  "evidence": ["evidence/iter1/ExpenseEdit/21_transfer_form_ui.jpeg", "evidence/iter1/ExpenseEdit/24_transfer_target_list_ui.jpeg", "evidence/iter1/ExpenseEdit/24b_transfer_select_state_ui.jpeg"],
+  "foundAt": "2026-08-18T04:30"
+}

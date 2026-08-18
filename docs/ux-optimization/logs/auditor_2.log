@@ -1,0 +1,108 @@
+# Auditor-2 审计日志（iter2）
+
+> 审计时间: 2026-08-18T14:35:00+08:00
+> 审计轮次: iter2
+> 审计员: Auditor-2
+> 输入: evidence/iter2/_pending/ (16个待审计问题) + BLK-001 补走查结果
+> 输出: ledger.json (更新)
+
+## 1. BLK-001 处理
+
+- **状态**: RESOLVED
+- **处理方式**: 从 blockedItems 移除，添加为 UX-0006 (CLOSED, iter=2)
+- **验证证据**: evidence/iter2/AiAssistant/01~05 (10个文件: 5截图+5dump)
+- **验证结论**: AiAssistant AI对话流程端到端验证通过
+  - 输入"记一笔午餐支出30元" → AI正确解析为支出¥30/午餐/测试账户1
+  - 显示待确认账单 → 点击"确认写入" → 成功创建交易
+- **无需代码修复**
+
+## 2. 待审计问题审计（16个）
+
+### 审计规则
+- 每个问题分配 UX-XXXX 编号（从 UX-0007 开始）
+- iter 字段设为 2
+- status 设为 "OPEN"
+- 确认 dimension 和 severity（本次全部保留原判定，未调整）
+- regressionRisk 暂设为 "none"
+- fixer/fixFiles/fixNote/verifiedBy/verifyEvidence/closedAt 暂为空
+
+### 合并判定
+- **MethodManage_03 / TagManage_03 / TagSelect_03**: 三者表现相似（"输入名称→确定→列表未出现新项"），但分属不同实体（付款方式 vs 标签）和不同页面，根因可能不同（saveMethod vs saveTag），**保持独立**便于 fixer 分别定位。
+- **MethodManage_05 / CategoryManage_07**: 都是"删除无确认"，但页面不同（MethodManage vs CategoryManage），**保持独立**。
+- **结论**: 16个问题全部保持独立，不合并。
+
+### 审计明细
+
+| 编号 | 原ID | 页面 | 维度 | 严重性 | 摘要 |
+|------|------|------|------|--------|------|
+| UX-0007 | CategoryManage_01 | CategoryManage | D2 | P2 | 分类列表缺少Tab/图标/颜色/层级 |
+| UX-0008 | CategoryManage_05 | CategoryManage | D4 | P2 | 编辑分类输入框未预填充名称 |
+| UX-0009 | CategoryManage_07 | CategoryManage | D1 | P1 | 删除分类无确认对话框 |
+| UX-0010 | MethodManage_01 | MethodManage | D9 | P3 | 标题'付款方法'与入口'管理付款方式'不一致 |
+| UX-0011 | MethodManage_03 | MethodManage | D3 | P1 | 新建付款方式保存静默失败 |
+| UX-0012 | MethodManage_04 | MethodManage | D5 | P2 | 付款方式列表项不可点击编辑 |
+| UX-0013 | MethodManage_05 | MethodManage | D1 | P1 | 删除付款方式无确认对话框 |
+| UX-0014 | TagManage_03 | TagManage | D3 | P1 | 新建标签保存静默失败 |
+| UX-0015 | TagSelect_03 | TagSelect | D3 | P1 | TagSelect创建标签不工作 |
+| UX-0016 | SearchPage_01 | SearchPage | D5 | P2 | 缺少简单关键字搜索入口 |
+| UX-0017 | SearchPage_04 | SearchPage | D3 | P1 | 搜索关键字未正确传递到查询条件 |
+| UX-0018 | BalanceSheet_01 | BalanceSheet | D5 | P2 | 报表页面入口未找到 |
+| UX-0019 | Distribution_04 | Distribution | D5 | P2 | 分布图分类项不可点击查看详情 |
+| UX-0020 | History_01 | History | D3 | P1 | 历史记录8月数据不一致(显示¥0实际¥50) |
+| UX-0021 | History_04 | History | D5 | P2 | '近6个月'时间范围选择器点击无响应 |
+| UX-0022 | BudgetManage_05 | BudgetManage | D5 | P2 | 预算项点击无编辑功能 |
+
+## 3. 严重性分布
+
+| 严重性 | 数量 | 编号 |
+|--------|------|------|
+| P1 | 7 | UX-0009, UX-0011, UX-0013, UX-0014, UX-0015, UX-0017, UX-0020 |
+| P2 | 8 | UX-0007, UX-0008, UX-0012, UX-0016, UX-0018, UX-0019, UX-0021, UX-0022 |
+| P3 | 1 | UX-0010 |
+| **合计** | **16** | |
+
+## 4. 维度分布
+
+| 维度 | 数量 | 说明 |
+|------|------|------|
+| D1 可用性 | 2 | UX-0009, UX-0013 (删除无确认) |
+| D2 视觉还原 | 1 | UX-0007 (分类列表样式) |
+| D3 反馈与状态 | 5 | UX-0011, UX-0014, UX-0015, UX-0017, UX-0020 (保存/搜索/数据不一致) |
+| D4 输入体验 | 1 | UX-0008 (编辑未预填充) |
+| D5 导航与可达 | 6 | UX-0012, UX-0016, UX-0018, UX-0019, UX-0021, UX-0022 |
+| D9 文案与本地化 | 1 | UX-0010 (用词不一致) |
+
+## 5. 页面分布
+
+| 页面 | 问题数 | 编号 |
+|------|--------|------|
+| CategoryManage | 3 | UX-0007~UX-0009 |
+| MethodManage | 4 | UX-0010~UX-0013 |
+| TagManage | 1 | UX-0014 |
+| TagSelect | 1 | UX-0015 |
+| SearchPage | 2 | UX-0016~UX-0017 |
+| BalanceSheet | 1 | UX-0018 |
+| Distribution | 1 | UX-0019 |
+| History | 2 | UX-0020~UX-0021 |
+| BudgetManage | 1 | UX-0022 |
+
+## 6. ledger.json 变更摘要
+
+- items: 5 → 22 (新增 UX-0006~UX-0022)
+- nextId: 6 → 23
+- blockedItems: 1 → 0 (BLK-001 移除)
+- updatedAt: 2026-08-18T14:35:00+08:00
+
+## 7. 结构化摘要
+
+```json
+{
+  "auditedCount": 16,
+  "newItems": ["UX-0007", "UX-0008", "UX-0009", "UX-0010", "UX-0011", "UX-0012", "UX-0013", "UX-0014", "UX-0015", "UX-0016", "UX-0017", "UX-0018", "UX-0019", "UX-0020", "UX-0021", "UX-0022"],
+  "blkResolved": ["BLK-001"],
+  "blkResolvedAs": "UX-0006",
+  "mergedItems": [],
+  "severityDistribution": {"P1": 7, "P2": 8, "P3": 1},
+  "ledgerTotal": 22
+}
+```

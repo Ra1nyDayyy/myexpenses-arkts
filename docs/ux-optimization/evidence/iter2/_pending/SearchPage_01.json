@@ -1,0 +1,9 @@
+{
+  "page": "SearchPage",
+  "dimension": "D5",
+  "severity": "P2",
+  "summary": "搜索页面仅有条件搜索模式（金额/备注/收款人/分类等条件），缺少简单关键字搜索入口。Android原版MyExpenses支持直接关键字搜索",
+  "repro": "交易Tab→点击复杂搜索按钮→页面仅显示条件选项，无全局关键字搜索框",
+  "evidence": ["evidence/iter2/SearchPage/01_search_entry_ui.jpeg", "evidence/iter2/SearchPage/01_search_entry_dump.json"],
+  "foundAt": "2026-08-18T13:59"
+}

@@ -17,8 +17,20 @@ export struct BudgetInputDialog {
   @State title: string = '';
   @State amount: string = '';
   @State accountId: number = -1;
-  onConfirm: (title: string, amount: string, accountId: number) => void = () => {
+  /** 编辑模式：传入预算ID则更新，否则新建 */
+  editBudgetId: number = -1;
+  dialogTitle: string = '新建预算';
+  initialTitle: string = '';
+  initialAmount: string = '';
+  initialAccountId: number = -1;
+  onConfirm: (title: string, amount: string, accountId: number, editId: number) => void = () => {
   };
+
+  aboutToAppear(): void {
+    this.title = this.initialTitle;
+    this.amount = this.initialAmount;
+    this.accountId = this.initialAccountId;
+  }
 
   private accountOptions(): SelectOption[] {
     const options: SelectOption[] = [];
@@ -35,7 +47,7 @@ export struct BudgetInputDialog {
 
   build() {
     Column() {
-      Text('新建预算')
+      Text(this.dialogTitle)
         .fontSize(16)
         .fontWeight(FontWeight.Medium)
         .margin({ bottom: 16 })
@@ -48,7 +60,7 @@ export struct BudgetInputDialog {
         })
 
       TextInput({ placeholder: '预算金额', text: this.amount })
-        .type(InputType.Number)
+        .type(InputType.NUMBER_DECIMAL)
         .width('100%')
         .height(44)
         .margin({ top: 12 })
@@ -87,7 +99,7 @@ export struct BudgetInputDialog {
           .layoutWeight(1)
           .backgroundColor($r('app.color.primaryColor'))
           .onClick(() => {
-            this.onConfirm(this.title, this.amount, this.accountId);
+            this.onConfirm(this.title, this.amount, this.accountId, this.editBudgetId);
             this.controller?.close();
           })
       }
@@ -114,8 +126,8 @@ export struct BudgetManage {
   private dialog: CustomDialogController = new CustomDialogController({
     builder: BudgetInputDialog({
       accounts: [],
-      onConfirm: (title: string, amount: string, accountId: number) => {
-        this.addBudget(title, amount, accountId);
+      onConfirm: (title: string, amount: string, accountId: number, editId: number) => {
+        this.saveBudget(title, amount, accountId, editId);
       }
     }),
     autoCancel: true,
@@ -138,13 +150,13 @@ export struct BudgetManage {
   }
 
   private openAddDialog(): void {
-    // 每次打开重建 controller，确保传入最新的账户列表和默认账户
     this.dialog = new CustomDialogController({
       builder: BudgetInputDialog({
         accounts: this.accounts,
         accountId: this.newAccountId,
-        onConfirm: (title: string, amount: string, accountId: number) => {
-          this.addBudget(title, amount, accountId);
+        dialogTitle: '新建预算',
+        onConfirm: (title: string, amount: string, accountId: number, editId: number) => {
+          this.saveBudget(title, amount, accountId, editId);
         }
       }),
       autoCancel: true,
@@ -155,20 +167,53 @@ export struct BudgetManage {
     this.dialog.open();
   }
 
-  private async addBudget(title: string, amount: string, accountId: number): Promise<void> {
+  private openEditDialog(b: Budget): void {
+    this.dialog = new CustomDialogController({
+      builder: BudgetInputDialog({
+        accounts: this.accounts,
+        accountId: b.accountId,
+        editBudgetId: b.id,
+        dialogTitle: '编辑预算',
+        initialTitle: b.title,
+        initialAmount: (b.budgetAmount / 100).toString(),
+        initialAccountId: b.accountId,
+        onConfirm: (title: string, amount: string, accountId: number, editId: number) => {
+          this.saveBudget(title, amount, accountId, editId);
+        }
+      }),
+      autoCancel: true,
+      alignment: DialogAlignment.Center,
+      customStyle: false,
+      cornerRadius: 12
+    });
+    this.dialog.open();
+  }
+
+  private async saveBudget(title: string, amount: string, accountId: number, editId: number): Promise<void> {
     if (!title.trim()) {
       promptAction.showToast({ message: '请输入预算名称' });
       return;
     }
-    const b = new Budget();
-    b.title = title.trim();
-    b.accountId = accountId;
-    const acc = this.accounts.find((a: Account) => a.id === accountId);
-    b.currency = acc ? acc.currency : 'CNY';
-    b.budgetAmount = parseFloat(amount) * 100 || 0;
-    await this.repository.insertBudget(b);
-    this.newAccountId = accountId;
-    await this.load();
+    try {
+      const b = new Budget();
+      b.id = editId;
+      b.title = title.trim();
+      b.accountId = accountId;
+      const acc = this.accounts.find((a: Account) => a.id === accountId);
+      b.currency = acc ? acc.currency : 'CNY';
+      b.budgetAmount = parseFloat(amount) * 100 || 0;
+      if (editId > 0) {
+        await this.repository.updateBudget(b);
+        promptAction.showToast({ message: '预算已更新' });
+      } else {
+        await this.repository.insertBudget(b);
+        promptAction.showToast({ message: '预算已创建' });
+      }
+      this.newAccountId = accountId;
+      await this.load();
+    } catch (e) {
+      promptAction.showToast({ message: `保存失败: ${(e as Error).message}` });
+    }
   }
 
   private confirmDeleteBudget(b: Budget): void {
@@ -242,6 +287,9 @@ export struct BudgetManage {
                   .margin({ left: 12, right: 12 })
                   .borderRadius($r('app.float.native_card_radius'))
                   .backgroundColor($r('app.color.surfacePrimary'))
+                  .onClick(() => {
+                    this.openEditDialog(b);
+                  })
                 }
               }, (b: Budget) => `budget_${b.id}`)
             }

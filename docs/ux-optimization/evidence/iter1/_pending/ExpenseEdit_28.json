@@ -1,0 +1,9 @@
+{
+  "page": "ExpenseEdit",
+  "dimension": "D3",
+  "severity": "P2",
+  "summary": "编辑交易有未保存修改时按Back键直接退出，无'确认放弃修改'对话框，易丢失修改",
+  "repro": "交易列表→点交易→编辑→改金额→按Back→直接返回列表，修改丢失无确认",
+  "evidence": ["evidence/iter1/ExpenseEdit/26_edit_form_ui.jpeg", "evidence/iter1/ExpenseEdit/28c_edit_state_ui.jpeg"],
+  "foundAt": "2026-08-18T04:34"
+}

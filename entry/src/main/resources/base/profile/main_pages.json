@@ -6,6 +6,7 @@
     "pages/CategoryManage",
     "pages/CategorySelect",
     "pages/MethodManage",
+    "pages/MethodSelect",
     "pages/TagManage",
     "pages/TagSelect",
 

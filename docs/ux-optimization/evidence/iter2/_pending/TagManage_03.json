@@ -1,0 +1,9 @@
+{
+  "page": "TagManage",
+  "dimension": "D3",
+  "severity": "P1",
+  "summary": "新建标签输入名称后点确定，对话框关闭但列表仍为空。保存静默失败或列表未刷新，无任何错误提示",
+  "repro": "设置→数据→标签→点+→输入TestTag→点确定→对话框关闭→列表仍为空",
+  "evidence": ["evidence/iter2/TagManage/02_add_form_ui.jpeg", "evidence/iter2/TagManage/03_add_save_ui.jpeg", "evidence/iter2/TagManage/03_add_save_dump.json"],
+  "foundAt": "2026-08-18T13:52"
+}

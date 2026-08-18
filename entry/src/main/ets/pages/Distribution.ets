@@ -5,7 +5,7 @@
  */
 import { Repository } from '../database/Repository';
 import { PageHeader } from '../components/PageHeader';
-import { router } from '@kit.ArkUI';
+import { router, promptAction } from '@kit.ArkUI';
 import { formatMoney } from '../model/Money';
 import { EmptyState } from '../components/EmptyState';
 
@@ -187,5 +187,12 @@ struct Distribution {
     .padding({ left: 16, right: 16, top: 14, bottom: 14 })
     .backgroundColor($r('app.color.surfacePrimary'))
     .borderRadius($r('app.float.native_card_radius'))
+    .onClick(() => {
+      const pct = this.total > 0 ? (item.amount / this.total * 100).toFixed(1) : '0';
+      promptAction.showToast({
+        message: `${item.label}: ¥${formatMoney(item.amount, 2)} (占比${pct}%)`,
+        duration: 3000
+      });
+    })
   }
 }

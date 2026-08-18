@@ -1,0 +1,9 @@
+{
+  "page": "TagSelect",
+  "dimension": "D3",
+  "severity": "P1",
+  "summary": "TagSelect页面创建标签功能不工作：输入名称点'创建'按钮后，标签未出现在列表中，页面仍为空状态",
+  "repro": "ExpenseEdit→点击标签右侧图标→进入TagSelect→输入TestTag→点创建→列表仍为空，无标签项出现",
+  "evidence": ["evidence/iter2/TagSelect/02_list_ui.jpeg", "evidence/iter2/TagSelect/03_multi_select_ui.jpeg", "evidence/iter2/TagSelect/03_multi_select_dump.json"],
+  "foundAt": "2026-08-18T13:57"
+}

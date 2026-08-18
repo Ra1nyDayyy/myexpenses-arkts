@@ -1,0 +1,80 @@
+==================================================
+Verifier-1 验证日志
+日期: 2026-08-18
+设备: 127.0.0.1:16555 (专用实例)
+HAP: 新构建 HAP (UX-0001~UX-0004 修复版)
+==================================================
+
+[V1] UX-0001 "转帐"→"转账"文案修复
+  操作:
+    1. 点击交易Tab (376, 2606)
+    2. dumpLayout → V1_text_fix_dump.json
+    3. screenCap → V1_text_fix_ui.jpeg
+  状态证据:
+    - 汇总区文本节点: text='转账' type=Text bounds=[819,547][897,592]
+    - 全文检索: 包含'转账'=True, 包含'转帐'=False
+    - 交易列表正常显示: 交通-20, 餐饮-50
+  结论: VERIFIED (错误文案"转帐"已修复为"转账")
+
+[V2] UX-0002 转账目标账户空列表提示
+  操作:
+    1. 在交易Tab点击底部FAB Image (951, 2294) 进入 ExpenseEdit
+    2. dumpLayout 确认顶部Tab: 支出(230,444) 收入(495,444) 转账(760,444) 拆分(1025,444)
+    3. 点击"转账"Tab (760, 444)
+    4. dumpLayout → V2_transfer_hint_dump.json
+    5. screenCap → V2_transfer_hint_ui.jpeg
+    6. 按Back返回交易列表
+  状态证据:
+    - 转账Tab下"至"字段后显示提示文本: text='请先创建另一个账户' type=Text bounds=[416,751][1158,808]
+    - 无空响应Select组件, 改为友好提示
+  结论: VERIFIED (空账户列表显示"请先创建另一个账户"提示)
+
+[V3] UX-0003 编辑交易Back确认对话框
+  操作:
+    1. 在交易列表单击交通行 (632, 914) 弹出菜单: 详细信息/编辑/删除
+    2. 点击"编辑" (670, 1355) 进入编辑页
+    3. 点击金额输入框 (876, 948), 输入"99" → 金额变为"9920.00" (已修改)
+    4. 按Back键 (第一次: 收起输入法, 仍在编辑页)
+    5. 按Back键 (第二次: 触发页面返回逻辑)
+    6. dumpLayout → V3_back_confirm_dump.json
+    7. screenCap → V3_back_confirm_ui.jpeg
+    8. 点击"放弃" (892, 1553) 放弃修改回列表
+  状态证据:
+    - AlertDialog 弹出: text='放弃修改？当前修改尚未保存，确定要放弃并退出吗？' type=AlertDialog bounds=[0,137][1256,2760]
+    - 标题: "放弃修改？" bounds=[369,1081][887,1323]
+    - 内容: "当前修改尚未保存，确定要放弃并退出吗？" bounds=[68,1323][1188,1455]
+    - 按钮: "继续编辑" bounds=[253,1520][477,1586], "放弃" bounds=[836,1520][948,1586]
+    - 未直接退出, 而是弹出确认对话框
+  结论: VERIFIED (Back键弹出确认对话框, 非直接退出)
+
+[V4] UX-0004 删除交易AlertDialog有效
+  操作:
+    1. 在交易列表点击交通行金额区 (1077, 916) 弹出菜单
+    2. 点击"删除" (670, 1523)
+    3. dumpLayout → V4_dialog_dump.json 确认AlertDialog
+    4. 点击"删除"按钮 (892, 1553) 确认删除
+    5. dumpLayout → V4_delete_works_dump.json
+    6. screenCap → V4_delete_works_ui.jpeg
+  状态证据:
+    - AlertDialog 弹出: text='删除交易确定要删除这笔交易吗？此操作不可恢复。' type=AlertDialog
+    - 标题: "删除交易", 内容: "确定要删除这笔交易吗？此操作不可恢复。"
+    - 按钮: "取消" / "删除"
+    - 删除后交易列表: 交通交易已消失, 仅剩餐饮-50
+    - 余额联动: ¥930.00 → ¥950.00 (删除-20交易后 +20)
+    - 支出联动: ¥-70.00 → ¥-50.00
+    - 月度汇总联动: ¥-70.00 → ¥-50.00
+  结论: VERIFIED (AlertDialog确认删除有效, 数据联动正确)
+
+==================================================
+汇总: 4/4 验证通过
+==================================================
+{
+  "results": [
+    {"id":"UX-0001","verdict":"VERIFIED","evidence":["V1_text_fix_ui.jpeg","V1_text_fix_dump.json"],"note":"汇总区文案已从'转帐'修复为'转账'"},
+    {"id":"UX-0002","verdict":"VERIFIED","evidence":["V2_transfer_hint_ui.jpeg","V2_transfer_hint_dump.json"],"note":"转账Tab空账户显示'请先创建另一个账户'提示"},
+    {"id":"UX-0003","verdict":"VERIFIED","evidence":["V3_back_confirm_ui.jpeg","V3_back_confirm_dump.json"],"note":"编辑交易按Back弹出'放弃修改？'确认对话框"},
+    {"id":"UX-0004","verdict":"VERIFIED","evidence":["V4_delete_works_ui.jpeg","V4_delete_works_dump.json","V4_dialog_dump.json"],"note":"删除AlertDialog有效, 交通交易已删除, 余额930→950联动正确"}
+  ],
+  "summary": "4/4 验证通过"
+}
+==================================================

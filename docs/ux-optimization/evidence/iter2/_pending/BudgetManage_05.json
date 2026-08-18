@@ -1,0 +1,9 @@
+{
+  "page": "BudgetManage",
+  "dimension": "D5",
+  "severity": "P2",
+  "summary": "预算项点击无编辑功能，点击列表项无响应，只能通过右侧按钮删除",
+  "repro": "更多Tab→预算编制→新建预算→点击预算项",
+  "evidence": ["evidence/iter2/BudgetEdit/05_edit_ui.jpeg"],
+  "foundAt": "2026-08-18T14:22"
+}

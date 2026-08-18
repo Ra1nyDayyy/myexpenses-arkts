@@ -1,0 +1,9 @@
+{
+  "page": "Index",
+  "dimension": "D9",
+  "severity": "P2",
+  "summary": "交易Tab汇总区'转帐'应为'转账'（帐→账）",
+  "repro": "首页→交易Tab→查看收入/支出/转帐汇总标签",
+  "evidence": ["evidence/iter1/Index/07_tab_txn_ui.jpeg", "evidence/iter1/Index/07_tab_txn_dump.json"],
+  "foundAt": "2026-08-18T04:17"
+}

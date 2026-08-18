@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "state": "VERIFYING",
+  "iter": 6,
+  "phase": "VERIFYING",
+  "startedAt": "2026-08-18T03:52:00+08:00",
+  "updatedAt": "2026-08-19T01:17:00+08:00",
+  "lastReport": "iteration_report_v5.md",
+  "devicePlan": "TIME_SLICE",
+  "dedicatedInstances": [
+    {"name": "MyExpensesUX_20260818", "port": 16555, "connectKey": "127.0.0.1:16555", "owner": null, "online": true}
+  ],
+  "forbiddenInstances": [
+    {"name": "Mate X7", "note": "其他项目在用"},
+    {"name": "Pura 90", "note": "其他项目在用"},
+    {"name": "Pura 90 test", "note": "其他项目在用"},
+    {"name": "MateBook Pro", "note": "其他项目实例"},
+    {"name": "MatePad Pro 13", "note": "其他项目实例"}
+  ],
+  "forbiddenPorts": [5555, 5557, 5559, 15558],
+  "build": {
+    "lastHap": "entry/build/default/outputs/default/entry-default-unsigned.hap",
+    "lastBuildAt": "2026-08-19T01:17:00+08:00",
+    "sha256": "a4765a2b9b5ae5eed33caa1c2a117e232b2e11de1eba273743f2920a4f891012",
+    "size": 3251755
+  },
+  "autoPause": null,
+  "pausedByUser": false,
+  "stopRequested": false,
+  "budget": {"maxIters": 20, "perIterHardTimeoutHours": 8, "perIterFixCap": 12},
+  "m0Completed": true,
+  "m0CompletedAt": "2026-08-18T04:06:00+08:00"
+}

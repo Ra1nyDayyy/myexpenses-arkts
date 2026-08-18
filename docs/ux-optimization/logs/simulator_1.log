@@ -1,0 +1,92 @@
+# Simulator 第1轮 WALKTHROUGH 日志
+# 生成时间: 2026-08-18T04:48
+# 子代理: Simulator-1 | 设备: 127.0.0.1:16555 (专用实例)
+# 轮次: iter1 | 方案: TIME_SLICE
+
+## 0. 环境核验
+- HDC: /Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/hdc
+- 专用实例: 127.0.0.1:16555 (全程隔离，未触碰5555/5557/5559/15558)
+- 应用: org.totschnig.myexpenses / EntryAbility
+- 输入法: 小艺输入法(已启用，未重设)
+- 起始状态: 首页空态(浅色)
+
+## 1. 组1: Index + AccountEdit (J1首启 + J7深色)
+| 步骤 | 命令 | 结果 | 证据 |
+|------|------|------|------|
+| 02 | aa start EntryAbility | 成功 | Index/01_empty_{ui,dump} |
+| 03 | click 628,1781 (新建账户) | 进AccountEdit | AccountEdit/02_form_{ui,dump} |
+| 04 | click 787,444 + text '测试账户1' | 输入成功 | AccountEdit/03_input_name_{ui,dump} |
+| 05 | click 829,780 + text '1000' | 余额输入成功 | AccountEdit/04_input_balance_{ui,dump} |
+| 06 | click 1002,2419 (底部保存) | 回Index,余额¥1000 | Index/05_after_save2_{ui,dump} |
+| 07 | click 376,2606 (交易Tab) | 显示汇总+空态 | Index/07_tab_txn_{ui,dump} |
+| 08 | click 1130,2606 (更多)→设置 | 进Settings | Settings/09_root_{ui,dump} |
+| 10 | click 112,700 (界面分组) | 显示主题/字体等 | Settings/10_ui_group_{ui,dump} |
+| 11 | click 300,432 (主题) | 弹主题选择 | Settings/11_theme_dialog_{ui,dump} |
+| 12 | click 628,1575 (深色)+force-stop+start | 深色生效 | Index/12_dark_{ui,dump} |
+| 15 | 切浅色+重启 | 浅色恢复 | Index/15_light_restored_ui |
+
+发现: Index_07 (D9/P2) "转帐"应为"转账"
+
+## 2. 组2: ExpenseEdit (J2日常记账)
+| 步骤 | 命令 | 结果 | 证据 |
+|------|------|------|------|
+| 09 | 交易Tab空态找入口 | 两Image FAB | ExpenseEdit/09_txn_empty_ui |
+| 10 | click 951,2294 (Image FAB) | 进ExpenseEdit | ExpenseEdit/10_form_{ui,dump} |
+| 11 | click 876,948 + text '50' | 金额输入 | ExpenseEdit/11_input_amount_{ui,dump} |
+| 12 | click 759,1452 (类别) | 弹类别选择 | ExpenseEdit/12_category_{ui,dump} |
+| 13 | click 747,1788 (餐饮) | 选餐饮回表单 | ExpenseEdit/13_category_set_{ui,dump} |
+| 15 | click 1002,2419 (保存) | 回Index,余额¥950 | ExpenseEdit/15_saved_{ui,dump} |
+| 19 | 第2笔:金额20+交通+保存 | 余额¥930,支出¥-70 | ExpenseEdit/19_txn2_saved_{ui,dump} |
+| 21 | 第3笔:转账Tab | 转账表单 | ExpenseEdit/21_transfer_form_{ui,dump} |
+| 24 | 点Select(1039,780)选目标账户 | 无响应 | ExpenseEdit/24_transfer_target_list_{ui,dump} |
+| 28 | 编辑交易改金额+Back | 直接退出无确认 | ExpenseEdit/28c_edit_state_ui |
+| 49 | 点删除(670,1523) | 无响应 | ExpenseEdit/49_delete_confirm_{ui,dump} |
+
+发现:
+- ExpenseEdit_24 (D1/P1) 转账目标账户Select点击无响应
+- ExpenseEdit_28 (D3/P2) 编辑未保存按Back直接退出无确认
+- ExpenseEdit_49 (D1/P1) 删除选项点击无响应
+
+## 3. 组3: Settings (J5设置漫游)
+| 分组 | 状态 | 证据 |
+|------|------|------|
+| 数据 | 正常(类别/付款/标签/货币) | Settings/g3_04_data_{ui,dump} |
+| 界面 | 正常(主题/字体/语言等) | Settings/10_ui_group_{ui,dump} |
+| 导入/导出 | 正常(CSV/QIF/Grisbi) | Settings/g3_05_import_export_{ui,dump} |
+| 备份与恢复 | 正常(备份/恢复按钮) | Settings/g3_06_backup_{ui,dump} |
+| 功能/扫描收据 | 开发中 | Settings/g3_08_ocr_{ui,dump} |
+| 同步 | 开发中 | Settings/g3_07_sync_{ui,dump} |
+| Web界面 | 开发中 | Settings/g3_09_web_{ui,dump} |
+| 附加图片 | 开发中 | Settings/g3_10_attach_{ui,dump} |
+| 打印 | 开发中 | Settings/g3_11_print_{ui,dump} |
+
+无新增缺陷(开发中标注为分阶段实现合理)
+
+## 4. 组4: AiAssistant (J4 AI对话)
+| 步骤 | 命令 | 结果 | 证据 |
+|------|------|------|------|
+| 03 | click 627,2606 (AI Tab) | 进AiAssistant | AiAssistant/03_main_{ui,dump} |
+| 04 | click 670,2326 + text | 设备16555断连 | 未完成 |
+
+发现: AiAssistant_04 (D1/P3) 设备中断,对话流程未完成,标注LLM-DEPENDENT
+
+## 5. 设备中断说明
+- 04:46 专用实例127.0.0.1:16555从targets列表消失
+- 尝试tconn重连失败(Connect failed)
+- 原因: 模拟器实例在中文输入时崩溃/关闭,非应用问题
+- 影响范围: 仅组4 AI对话输入+响应验证未完成
+- 已完成: AiAssistant主界面留证(03_main),界面结构已记录
+
+## 6. 汇总
+- 走查页面: Index, AccountEdit, ExpenseEdit, Settings, AiAssistant (5页)
+- 证据总数: 94 (截图+dump)
+- 待审计问题: 5条
+  - Index_07 (D9/P2) "转帐"→"转账"
+  - ExpenseEdit_24 (D1/P1) 转账目标账户Select无响应
+  - ExpenseEdit_28 (D3/P2) 编辑未保存Back无确认
+  - ExpenseEdit_49 (D1/P1) 删除选项无响应
+  - AiAssistant_04 (D1/P3) 设备中断,对话未完成
+- 关键发现:
+  1. 记账核心流程(支出/收入)可用,保存后余额正确
+  2. 转账流程因目标账户Select无响应阻断(P1)
+  3. 交易删除无响应(P1),需审计是否Option组件事件未绑定

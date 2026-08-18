@@ -1,0 +1,461 @@
+=== Simulator-5b 走查日志 ===
+开始时间: 2026-08-18 21:51:26
+目标设备: 127.0.0.1:16555
+
+## 步骤0: 确认模拟器在线
+20020073      25721    133 0 21:31:43 ?     00:00:00 org.totschnig.myexpenses
+---
+应用进程检查完成
+
+## 步骤1: 模板Tab功能走查
+时间: 21:53:57
+1.1 点击模板Tab (879, 2606)
+Illegal argument: uiinput
+usage: uitest <command> [options]                                                                          
+help                                                                                    print help messages
+screenCap                                                                        capture the current screen
+  -p <savePath>                                                                      specifies the savePath
+  -d <displayId>                                                                       specifies the screen
+dumpLayout                                                               get the current layout information
+  -p <savePath>                                                                      specifies the savePath
+  -i                                                                     not merge windows and filter nodes
+  -a                                                                                include font attributes
+  -b <bundleName>                                             specifies the bundleName of the target window
+  -w <windowId>                                                specifies the window id of the target window
+  -m <true/false>          whether merge windows, true means to merge, set it true when not use this option
+  -d <displayId>                                           specifies the locate screen of the target window
+  -e <attributeName>                                               extend by adding the specified attribute
+start-daemon <token>                                                                 start the test process
+uiRecord                                                                            recording Ui Operations
+  record                                                           Write Ui event information into csv file
+    -W <true/false>                                     whether save widget information, true means to save
+                                                                       set it true when not use this option
+    -l                                             Save the current layout information after each operation
+    -c <true/false>              whether print the Ui event information to the console, true means to print
+                                                                       set it true when not use this option
+  read                                                                    print file content to the console
+uiInput                                                                     inject Ui simulation operations
+  help                                                                                  print uiInput usage
+  dircFling  <direction> [velocity] [stepLength]      direction ranges from 0,1,2,3 (left, right, up, down)
+  click/doubleClick/longClick <x> <y>                                       click on the target coordinates
+  swipe/drag <from_x> <from_y> <to_x> <to_y> [velocity]      velocity ranges from 200 to 40000, default 600
+  fling <from_x> <from_y> <to_x> <to_y> [velocity] [stepLength]   velocity ranges from 200 to 40000, default 600
+  keyEvent <keyID/Back/Home/Power>                                                          inject keyEvent
+  keyEvent <keyID_0> <keyID_1> [keyID_2]                                           keyID_2 default to None 
+  inputText <x> <y> <text>                                         inputText at the target coordinate point
+  text <text>                                           input text at the location where is already focused
+--version                                                                        print current tool version
+
+ScreenCap saved to /data/local/tmp/tpl_01_list.jpeg
+FileTransfer finish, Size:149128, File count = 1, time:8ms rate:18641.00kB/s
+DumpLayout saved to:/data/local/tmp/layout_61458817049.json
+/data/local/tmp/layout_61458817049.json
+最新layout: /data/local/tmp/layout_61458817049.json
+FileTransfer finish, Size:68635, File count = 1, time:7ms rate:9805.00kB/s
+1.1b 重新点击模板Tab中心 (879, 2550)
+Illegal argument: uiinput
+usage: uitest <command> [options]                                                                          
+help                                                                                    print help messages
+screenCap                                                                        capture the current screen
+  -p <savePath>                                                                      specifies the savePath
+  -d <displayId>                                                                       specifies the screen
+dumpLayout                                                               get the current layout information
+  -p <savePath>                                                                      specifies the savePath
+  -i                                                                     not merge windows and filter nodes
+  -a                                                                                include font attributes
+  -b <bundleName>                                             specifies the bundleName of the target window
+  -w <windowId>                                                specifies the window id of the target window
+  -m <true/false>          whether merge windows, true means to merge, set it true when not use this option
+  -d <displayId>                                           specifies the locate screen of the target window
+  -e <attributeName>                                               extend by adding the specified attribute
+start-daemon <token>                                                                 start the test process
+uiRecord                                                                            recording Ui Operations
+  record                                                           Write Ui event information into csv file
+    -W <true/false>                                     whether save widget information, true means to save
+                                                                       set it true when not use this option
+    -l                                             Save the current layout information after each operation
+    -c <true/false>              whether print the Ui event information to the console, true means to print
+                                                                       set it true when not use this option
+  read                                                                    print file content to the console
+uiInput                                                                     inject Ui simulation operations
+  help                                                                                  print uiInput usage
+  dircFling  <direction> [velocity] [stepLength]      direction ranges from 0,1,2,3 (left, right, up, down)
+  click/doubleClick/longClick <x> <y>                                       click on the target coordinates
+  swipe/drag <from_x> <from_y> <to_x> <to_y> [velocity]      velocity ranges from 200 to 40000, default 600
+  fling <from_x> <from_y> <to_x> <to_y> [velocity] [stepLength]   velocity ranges from 200 to 40000, default 600
+  keyEvent <keyID/Back/Home/Power>                                                          inject keyEvent
+  keyEvent <keyID_0> <keyID_1> [keyID_2]                                           keyID_2 default to None 
+  inputText <x> <y> <text>                                         inputText at the target coordinate point
+  text <text>                                           input text at the location where is already focused
+--version                                                                        print current tool version
+
+ScreenCap saved to /data/local/tmp/tpl_01_list.jpeg
+FileTransfer finish, Size:149128, File count = 1, time:10ms rate:14912.80kB/s
+截图已保存
+1.1c 用正确命令点击模板Tab (879, 2550)
+No Error
+ScreenCap saved to /data/local/tmp/tpl_01_list.jpeg
+FileTransfer finish, Size:166994, File count = 1, time:9ms rate:18554.89kB/s
+截图已更新
+DumpLayout saved to:/data/local/tmp/layout_61687214969.json
+FileTransfer finish, Size:55727, File count = 1, time:10ms rate:5572.70kB/s
+1.4 点击新建模板按钮 (628, 1683)
+No Error
+ScreenCap saved to /data/local/tmp/tpl_02_edit_new.jpeg
+FileTransfer finish, Size:197402, File count = 1, time:11ms rate:17945.64kB/s
+DumpLayout saved to:/data/local/tmp/layout_61705718999.json
+FileTransfer finish, Size:56080, File count = 1, time:10ms rate:5608.00kB/s
+模板编辑页截图和dump已保存
+1.5a 点击标题输入框并输入'测试模板A'
+No Error
+Missing parameter. 
+
+USAGE : 
+help                                                                                  print uiInput usage
+dircFling  <direction> [velocity] [stepLength]      direction ranges from 0,1,2,3 (left, right, up, down)
+click/doubleClick/longClick <x> <y>                                       click on the target coordinates
+swipe/drag <from_x> <from_y> <to_x> <to_y> [velocity]      velocity ranges from 200 to 40000, default 600
+fling <from_x> <from_y> <to_x> <to_y> [velocity] [stepLength]   velocity ranges from 200 to 40000, default 600
+keyEvent <keyID/Back/Home/Power>                                                          inject keyEvent
+keyEvent <keyID_0> <keyID_1> [keyID_2]                                           keyID_2 default to None 
+inputText <x> <y> <text>                                         inputText at the target coordinate point
+text <text>                                           input text at the location where is already focused
+
+输入标题文字'测试模板A'
+No Error
+ScreenCap saved to /data/local/tmp/tpl_03_title_entered.jpeg
+FileTransfer finish, Size:310157, File count = 1, time:9ms rate:34461.89kB/s
+标题输入截图已保存
+关闭键盘
+No Error
+点击金额输入框 (700, 780)
+No Error
+输入金额100
+No Error
+ScreenCap saved to /data/local/tmp/tpl_04_amount_entered.jpeg
+FileTransfer finish, Size:276453, File count = 1, time:10ms rate:27645.30kB/s
+金额输入截图已保存
+关闭键盘
+No Error
+点击类别选择 (500, 1115)
+No Error
+ScreenCap saved to /data/local/tmp/tpl_05_category_select.jpeg
+FileTransfer finish, Size:149047, File count = 1, time:10ms rate:14904.70kB/s
+DumpLayout saved to:/data/local/tmp/layout_61963648559.json
+FileTransfer finish, Size:66102, File count = 1, time:10ms rate:6610.20kB/s
+分类选择页截图已保存
+选择'餐饮'分类 (747, 1788)
+No Error
+ScreenCap saved to /data/local/tmp/tpl_06_category_selected.jpeg
+FileTransfer finish, Size:198726, File count = 1, time:10ms rate:19872.60kB/s
+分类已选择截图保存
+DumpLayout saved to:/data/local/tmp/layout_62051308687.json
+[Fail]Error opening file: no such file or directory, path:/Users/rainyday/Desktop/migration/arkts_new/docs/ux-optimization/evidence/iter5/templates/tpl_06_category_selected_dump.json
+1.6 点击保存按钮 (1002, 2419)
+No Error
+ScreenCap saved to /data/local/tmp/tpl_07_saved.jpeg
+FileTransfer finish, Size:136582, File count = 1, time:10ms rate:13658.20kB/s
+DumpLayout saved to:/data/local/tmp/layout_62103967799.json
+FileTransfer finish, Size:58879, File count = 1, time:9ms rate:6542.11kB/s
+保存后截图已保存
+1.8 点击模板项'测试模板A' (378, 434)
+No Error
+ScreenCap saved to /data/local/tmp/tpl_08_use_template.jpeg
+FileTransfer finish, Size:136809, File count = 1, time:10ms rate:13680.90kB/s
+DumpLayout saved to:/data/local/tmp/layout_62157648777.json
+FileTransfer finish, Size:58879, File count = 1, time:12ms rate:4906.58kB/s
+使用模板截图已保存
+1.8b 长按模板项'测试模板A' (378, 434)
+No Error
+ScreenCap saved to /data/local/tmp/tpl_08b_longpress.jpeg
+FileTransfer finish, Size:179702, File count = 1, time:10ms rate:17970.20kB/s
+长按截图已保存
+DumpLayout saved to:/data/local/tmp/layout_62255252931.json
+FileTransfer finish, Size:64257, File count = 1, time:10ms rate:6425.70kB/s
+点击编辑按钮 (262, 698)
+No Error
+ScreenCap saved to /data/local/tmp/tpl_09_edit_existing.jpeg
+FileTransfer finish, Size:199201, File count = 1, time:10ms rate:19920.10kB/s
+编辑已有模板截图已保存
+返回模板列表
+No Error
+No Error
+ScreenCap saved to /data/local/tmp/tpl_10_back_to_list.jpeg
+FileTransfer finish, Size:277781, File count = 1, time:9ms rate:30864.56kB/s
+模板Tab走查完成
+
+## 步骤2: 设置子页面走查
+时间: 22:08:37
+2.1 点击'更多'Tab (1130, 2550)
+No Error
+ScreenCap saved to /data/local/tmp/set_01_more_tab.jpeg
+FileTransfer finish, Size:277781, File count = 1, time:9ms rate:30864.56kB/s
+DumpLayout saved to:/data/local/tmp/layout_62339868227.json
+FileTransfer finish, Size:110577, File count = 1, time:6ms rate:18429.50kB/s
+更多Tab截图已保存
+应用被切到电话，重新启动MyExpenses
+start ability successfully.
+ScreenCap saved to /data/local/tmp/set_00_restarted.jpeg
+FileTransfer finish, Size:136907, File count = 1, time:8ms rate:17113.38kB/s
+DumpLayout saved to:/data/local/tmp/layout_62399202064.json
+FileTransfer finish, Size:58879, File count = 1, time:9ms rate:6542.11kB/s
+2.1b 点击'更多'Tab文本 (1130, 2606)
+No Error
+ScreenCap saved to /data/local/tmp/set_01_more_tab.jpeg
+FileTransfer finish, Size:277781, File count = 1, time:11ms rate:25252.82kB/s
+DumpLayout saved to:/data/local/tmp/layout_62428662886.json
+FileTransfer finish, Size:77771, File count = 1, time:23ms rate:3381.35kB/s
+2.2 点击'设置' (343, 2252)
+No Error
+ScreenCap saved to /data/local/tmp/set_02_main.jpeg
+FileTransfer finish, Size:209605, File count = 1, time:7ms rate:29943.57kB/s
+DumpLayout saved to:/data/local/tmp/layout_62476386194.json
+FileTransfer finish, Size:79005, File count = 1, time:11ms rate:7182.27kB/s
+2.3a 进入'数据'子页面 (112, 432)
+No Error
+ScreenCap saved to /data/local/tmp/set_03_data.jpeg
+FileTransfer finish, Size:232785, File count = 1, time:10ms rate:23278.50kB/s
+DumpLayout saved to:/data/local/tmp/layout_62502429280.json
+FileTransfer finish, Size:65183, File count = 1, time:11ms rate:5925.73kB/s
+数据子页面已截图
+No Error
+2.3b 进入'界面'子页面 (112, 700)
+No Error
+ScreenCap saved to /data/local/tmp/set_04_ui.jpeg
+FileTransfer finish, Size:198815, File count = 1, time:10ms rate:19881.50kB/s
+DumpLayout saved to:/data/local/tmp/layout_62542462920.json
+FileTransfer finish, Size:64426, File count = 1, time:10ms rate:6442.60kB/s
+No Error
+2.3c 进入'导入/导出' (112, 968)
+No Error
+ScreenCap saved to /data/local/tmp/set_05_import_export.jpeg
+FileTransfer finish, Size:262932, File count = 1, time:9ms rate:29214.67kB/s
+DumpLayout saved to:/data/local/tmp/layout_62546859753.json
+FileTransfer finish, Size:64163, File count = 1, time:12ms rate:5346.92kB/s
+No Error
+2.3d 进入'备份与恢复' (112, 1235)
+No Error
+ScreenCap saved to /data/local/tmp/set_06_backup.jpeg
+FileTransfer finish, Size:157978, File count = 1, time:9ms rate:17553.11kB/s
+DumpLayout saved to:/data/local/tmp/layout_62551229820.json
+FileTransfer finish, Size:35506, File count = 1, time:8ms rate:4438.25kB/s
+No Error
+设置子页面批次1完成
+ScreenCap saved to /data/local/tmp/check_settings_main.jpeg
+FileTransfer finish, Size:209451, File count = 1, time:10ms rate:20945.10kB/s
+DumpLayout saved to:/data/local/tmp/layout_62574353365.json
+FileTransfer finish, Size:79004, File count = 1, time:9ms rate:8778.22kB/s
+2.3e 进入'功能-扫描收据' (112, 1644)
+No Error
+ScreenCap saved to /data/local/tmp/set_07_function.jpeg
+FileTransfer finish, Size:97530, File count = 1, time:10ms rate:9753.00kB/s
+DumpLayout saved to:/data/local/tmp/layout_62622598955.json
+FileTransfer finish, Size:32018, File count = 1, time:10ms rate:3201.80kB/s
+No Error
+2.3f 进入'同步' (112, 1912)
+No Error
+ScreenCap saved to /data/local/tmp/set_08_sync.jpeg
+FileTransfer finish, Size:92639, File count = 1, time:9ms rate:10293.22kB/s
+DumpLayout saved to:/data/local/tmp/layout_62626951135.json
+FileTransfer finish, Size:32000, File count = 1, time:5ms rate:6400.00kB/s
+No Error
+2.3g 进入'Web界面' (112, 2180)
+No Error
+ScreenCap saved to /data/local/tmp/set_09_web.jpeg
+FileTransfer finish, Size:99408, File count = 1, time:10ms rate:9940.80kB/s
+DumpLayout saved to:/data/local/tmp/layout_62631302723.json
+FileTransfer finish, Size:32018, File count = 1, time:10ms rate:3201.80kB/s
+No Error
+2.3h 进入'附加图片' (112, 2447)
+No Error
+ScreenCap saved to /data/local/tmp/set_10_attachment.jpeg
+FileTransfer finish, Size:99103, File count = 1, time:11ms rate:9009.36kB/s
+DumpLayout saved to:/data/local/tmp/layout_62635638587.json
+FileTransfer finish, Size:32036, File count = 1, time:10ms rate:3203.60kB/s
+No Error
+2.3i 进入'打印' (112, 2715)
+No Error
+ScreenCap saved to /data/local/tmp/set_11_print.jpeg
+FileTransfer finish, Size:94029, File count = 1, time:10ms rate:9402.90kB/s
+DumpLayout saved to:/data/local/tmp/layout_62640011508.json
+FileTransfer finish, Size:32000, File count = 1, time:10ms rate:3200.00kB/s
+No Error
+设置子页面批次2完成
+返回首页
+No Error
+No Error
+点击账户Tab (125, 2550)
+No Error
+ScreenCap saved to /data/local/tmp/acct_01_home.jpeg
+FileTransfer finish, Size:277234, File count = 1, time:12ms rate:23102.83kB/s
+DumpLayout saved to:/data/local/tmp/layout_62754616028.json
+FileTransfer finish, Size:110577, File count = 1, time:10ms rate:11057.70kB/s
+应用再次被切到电话，重新启动MyExpenses
+start ability successfully.
+ScreenCap saved to /data/local/tmp/acct_01_home.jpeg
+FileTransfer finish, Size:277234, File count = 1, time:10ms rate:27723.40kB/s
+DumpLayout saved to:/data/local/tmp/layout_62778329303.json
+FileTransfer finish, Size:58879, File count = 1, time:10ms rate:5887.90kB/s
+点击账户Tab文本 (125, 2606)
+No Error
+ScreenCap saved to /data/local/tmp/acct_01_home.jpeg
+FileTransfer finish, Size:277234, File count = 1, time:8ms rate:34654.25kB/s
+DumpLayout saved to:/data/local/tmp/layout_62803952724.json
+FileTransfer finish, Size:68667, File count = 1, time:16ms rate:4291.69kB/s
+
+## 步骤3: 账户编辑详情走查
+时间: 22:16:49
+3.1 点击'测试账户1' (424, 661)
+No Error
+ScreenCap saved to /data/local/tmp/acct_02_detail.jpeg
+FileTransfer finish, Size:203650, File count = 1, time:13ms rate:15665.38kB/s
+DumpLayout saved to:/data/local/tmp/layout_62831380616.json
+FileTransfer finish, Size:82092, File count = 1, time:10ms rate:8209.20kB/s
+3.2 点击'编辑'按钮 (378, 1104)
+No Error
+ScreenCap saved to /data/local/tmp/acct_03_edit.jpeg
+FileTransfer finish, Size:192367, File count = 1, time:12ms rate:16030.58kB/s
+DumpLayout saved to:/data/local/tmp/layout_62857541841.json
+FileTransfer finish, Size:60669, File count = 1, time:10ms rate:6066.90kB/s
+3.3 修改账户名称
+No Error
+No Error
+ScreenCap saved to /data/local/tmp/acct_04_edit_modified.jpeg
+FileTransfer finish, Size:317720, File count = 1, time:9ms rate:35302.22kB/s
+No Error
+DumpLayout saved to:/data/local/tmp/layout_62891891487.json
+FileTransfer finish, Size:60711, File count = 1, time:11ms rate:5519.18kB/s
+3.4 保存账户修改 (1002, 2419)
+No Error
+ScreenCap saved to /data/local/tmp/acct_05_saved.jpeg
+FileTransfer finish, Size:209813, File count = 1, time:9ms rate:23312.56kB/s
+DumpLayout saved to:/data/local/tmp/layout_62917462936.json
+FileTransfer finish, Size:82174, File count = 1, time:10ms rate:8217.40kB/s
+No Error
+
+## 步骤4: 边缘状态走查
+时间: 22:18:49
+4.1 进入交易Tab测试空搜索
+No Error
+ScreenCap saved to /data/local/tmp/edge_01_transactions.jpeg
+FileTransfer finish, Size:247865, File count = 1, time:9ms rate:27540.56kB/s
+DumpLayout saved to:/data/local/tmp/layout_62951398725.json
+FileTransfer finish, Size:100592, File count = 1, time:7ms rate:14370.29kB/s
+4.1a 点击搜索按钮 (990, 234)
+No Error
+ScreenCap saved to /data/local/tmp/edge_02_search.jpeg
+FileTransfer finish, Size:184725, File count = 1, time:9ms rate:20525.00kB/s
+DumpLayout saved to:/data/local/tmp/layout_63026267139.json
+FileTransfer finish, Size:61842, File count = 1, time:10ms rate:6184.20kB/s
+4.1b 点击'备注'搜索条件 (520, 472)
+No Error
+ScreenCap saved to /data/local/tmp/edge_03_search_remark.jpeg
+FileTransfer finish, Size:191605, File count = 1, time:13ms rate:14738.85kB/s
+DumpLayout saved to:/data/local/tmp/layout_63053094747.json
+FileTransfer finish, Size:68265, File count = 1, time:9ms rate:7585.00kB/s
+4.1c 输入搜索关键字'不存在的关键字XYZ'
+No Error
+点击确定 (917, 1546)
+No Error
+ScreenCap saved to /data/local/tmp/edge_04_search_empty_result.jpeg
+FileTransfer finish, Size:325442, File count = 1, time:8ms rate:40680.25kB/s
+DumpLayout saved to:/data/local/tmp/layout_63081868201.json
+FileTransfer finish, Size:95922, File count = 1, time:8ms rate:11990.25kB/s
+重新点击确定 (917, 1458)
+No Error
+ScreenCap saved to /data/local/tmp/edge_04_search_empty_result.jpeg
+FileTransfer finish, Size:325442, File count = 1, time:10ms rate:32544.20kB/s
+DumpLayout saved to:/data/local/tmp/layout_63108578759.json
+FileTransfer finish, Size:60527, File count = 1, time:11ms rate:5502.45kB/s
+点击搜索按钮执行搜索 (1031, 234)
+No Error
+ScreenCap saved to /data/local/tmp/edge_04_search_empty_result.jpeg
+FileTransfer finish, Size:325442, File count = 1, time:10ms rate:32544.20kB/s
+DumpLayout saved to:/data/local/tmp/layout_63132330232.json
+FileTransfer finish, Size:65789, File count = 1, time:10ms rate:6578.90kB/s
+空搜索结果已记录
+No Error
+4.3 新建交易测试日期选择器
+DumpLayout saved to:/data/local/tmp/layout_63157388355.json
+FileTransfer finish, Size:100592, File count = 1, time:8ms rate:12574.00kB/s
+点击FAB新建交易 (1082, 2295)
+No Error
+ScreenCap saved to /data/local/tmp/edge_06_new_txn.jpeg
+FileTransfer finish, Size:288527, File count = 1, time:11ms rate:26229.73kB/s
+DumpLayout saved to:/data/local/tmp/layout_63182284663.json
+FileTransfer finish, Size:111113, File count = 1, time:12ms rate:9259.42kB/s
+点击'支出'新建交易 (1087, 2084)
+No Error
+ScreenCap saved to /data/local/tmp/edge_07_new_expense.jpeg
+FileTransfer finish, Size:250597, File count = 1, time:10ms rate:25059.70kB/s
+DumpLayout saved to:/data/local/tmp/layout_63207382864.json
+FileTransfer finish, Size:73061, File count = 1, time:9ms rate:8117.89kB/s
+4.3 点击日期字段测试日期选择器 (613, 1116)
+No Error
+ScreenCap saved to /data/local/tmp/edge_08_date_picker.jpeg
+FileTransfer finish, Size:351749, File count = 1, time:11ms rate:31977.18kB/s
+DumpLayout saved to:/data/local/tmp/layout_63234276470.json
+FileTransfer finish, Size:100931, File count = 1, time:7ms rate:14418.71kB/s
+关闭日期选择器
+No Error
+4.5 点击类别字段 (759, 1452)
+No Error
+ScreenCap saved to /data/local/tmp/edge_09_category_select.jpeg
+FileTransfer finish, Size:149354, File count = 1, time:9ms rate:16594.89kB/s
+DumpLayout saved to:/data/local/tmp/layout_63262771545.json
+FileTransfer finish, Size:66228, File count = 1, time:10ms rate:6622.80kB/s
+No Error
+4.6 点击付款方法字段 (668, 1761)
+No Error
+ScreenCap saved to /data/local/tmp/edge_10_payment_method.jpeg
+FileTransfer finish, Size:250156, File count = 1, time:7ms rate:35736.57kB/s
+DumpLayout saved to:/data/local/tmp/layout_63289861095.json
+FileTransfer finish, Size:73061, File count = 1, time:9ms rate:8117.89kB/s
+点击'付款方法'标签 (257, 1760)
+No Error
+ScreenCap saved to /data/local/tmp/edge_10_payment_method.jpeg
+FileTransfer finish, Size:250156, File count = 1, time:9ms rate:27795.11kB/s
+DumpLayout saved to:/data/local/tmp/layout_63317268502.json
+FileTransfer finish, Size:73061, File count = 1, time:9ms rate:8117.89kB/s
+4.7 点击标签字段 (728, 1606)
+No Error
+ScreenCap saved to /data/local/tmp/edge_11_tag_select.jpeg
+FileTransfer finish, Size:250424, File count = 1, time:9ms rate:27824.89kB/s
+DumpLayout saved to:/data/local/tmp/layout_63342993564.json
+FileTransfer finish, Size:73061, File count = 1, time:9ms rate:8117.89kB/s
+点击'标签'标签 (296, 1606)
+No Error
+ScreenCap saved to /data/local/tmp/edge_11_tag_select.jpeg
+FileTransfer finish, Size:250424, File count = 1, time:8ms rate:31303.00kB/s
+DumpLayout saved to:/data/local/tmp/layout_63370788931.json
+FileTransfer finish, Size:73061, File count = 1, time:9ms rate:8117.89kB/s
+退出交易编辑页面
+No Error
+ScreenCap saved to /data/local/tmp/edge_12_final.jpeg
+FileTransfer finish, Size:248356, File count = 1, time:10ms rate:24835.60kB/s
+边缘状态走查完成
+
+## 走查统计
+完成时间: 2026-08-18 22:26:15
+证据文件统计:
+      11
+      13
+       5
+      11
+
+## 最终统计
+完成时间: 2026-08-18 22:27:54
+
+### 证据文件数
+templates截图:       11
+templates dump:        7
+settings截图:       13
+settings dump:       13
+account_edit截图:        5
+account_edit dump:        5
+edge_cases截图:       11
+edge_cases dump:       11
+
+总截图:       40
+总dump:       36
+总证据: 76

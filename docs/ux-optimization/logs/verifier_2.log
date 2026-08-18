@@ -1,0 +1,86 @@
+=========================================================
+Verifier-2 iter2 验证日志
+开始时间: 2026-08-18
+模拟器: 127.0.0.1:16555
+HAP: /Users/rainyday/Desktop/migration/arkts_new/entry/build/default/outputs/default/entry-default-unsigned.hap
+=========================================================
+
+[步骤1] 安装 HAP
+命令: hdc -t 127.0.0.1:16555 install -r ...entry-default-unsigned.hap
+结果: install bundle successfully
+
+[步骤2] 启动应用
+命令: hdc -t 127.0.0.1:16555 shell aa start -a EntryAbility -b org.totschnig.myexpenses
+结果: start ability successfully
+
+[步骤3] 验证 11 个修复项
+
+V1 - UX-0014 标签保存:
+  操作: 设置→数据→标签→点+→输入"TestTag"→点确定
+  状态证据: 列表中出现 text='TestTag' (bounds=[175,404][1193,470])
+  结论: PASS
+  证据: V1_tag_save_ui.jpeg, V1_tag_save_dump.json
+
+V2 - UX-0015 TagSelect创建标签:
+  操作: ExpenseEdit→标签图标→TagSelect→输入"NewTag"→点创建
+  状态证据: 列表中出现 text='NewTag' (bounds=[112,691][1242,757])
+  结论: PASS
+  证据: V2_tagselect_create_ui.jpeg, V2_tagselect_create_dump.json
+
+V3 - UX-0017 搜索关键字:
+  操作: 交易Tab→复杂搜索→备注→输入"餐"→确定
+  状态证据: 条件显示 text='备注 等于 餐' (bounds=[98,1033][1115,1086])，不含"(支出)"
+  结论: PASS
+  证据: V3_search_keyword_ui.jpeg, V3_search_keyword_dump.json
+
+V4 - UX-0020 历史记录数据:
+  操作: 交易Tab→右上角菜单→历史记录→滚动到8月
+  状态证据: 8月数据显示 text='支出 ¥80.00' (bounds=[864,2531][1242,2584])，不为¥0.00
+  结论: PASS
+  证据: V4_history_data_ui.jpeg, V4_history_data_dump.json
+
+V5 - UX-0005 金额全选:
+  操作: 交易列表→编辑交易→点金额输入框→输入"100"
+  状态证据: 金额输入框显示 text='100' (替换了原值"30.00"，非追加)
+  结论: PASS
+  证据: V5_amount_select_all_ui.jpeg, V5_amount_select_all_dump.json
+
+V6 - UX-0011 付款方式保存:
+  操作: 设置→数据→管理付款方式→点+→输入"TestPay"→点确定
+  状态证据: 列表中出现 text='TestPay' (bounds=[98,1832][1193,1898])
+  结论: PASS
+  证据: V6_payment_save_ui.jpeg, V6_payment_save_dump.json
+
+V7 - UX-0013 付款方式删除确认:
+  操作: 设置→数据→管理付款方式→点TestPay删除图标
+  状态证据: 弹出 AlertDialog，标题"删除付款方式"，内容"确定删除"TestPay"吗？"，按钮"取消"/"删除"
+  结论: PASS
+  证据: V7_payment_delete_confirm_ui.jpeg, V7_payment_delete_confirm_dump.json
+
+V8 - UX-0008 分类编辑预填充:
+  操作: 设置→数据→管理类别→点"交通"编辑图标
+  状态证据: 弹出"编辑分类"对话框，TextInput 预填充 text='交通'
+  结论: PASS
+  证据: V8_category_edit_prefill_ui.jpeg, V8_category_edit_prefill_dump.json
+
+V9 - UX-0009 分类删除确认:
+  操作: 设置→数据→管理类别→点"交通"删除图标
+  状态证据: 弹出 AlertDialog，标题"删除分类"，内容"确定删除分类"交通"吗？"，按钮"取消"/"删除"
+  结论: PASS
+  证据: V9_category_delete_confirm_ui.jpeg, V9_category_delete_confirm_dump.json
+
+V10 - UX-0010 付款方式标题:
+  操作: 设置→数据→管理付款方式
+  状态证据: 页面标题 text='付款方式' (bounds=[182,193][462,275])，不是"付款方法"
+  结论: PASS
+  证据: V10_payment_title_ui.jpeg, V10_payment_title_dump.json
+
+V11 - UX-0012 付款方式编辑:
+  操作: 设置→数据→管理付款方式→点击"现金"列表项
+  状态证据: 弹出"编辑付款方式"对话框，TextInput 预填充 text='现金'
+  结论: PASS
+  证据: V11_payment_edit_ui.jpeg, V11_payment_edit_dump.json
+
+=========================================================
+汇总: 11/11 PASS
+=========================================================

@@ -35,7 +35,7 @@ export const AI_CAPABILITY_BOUNDARY_MESSAGE: string =
 const SYSTEM_PROMPT = `你是一个记账应用意图识别器。用户输入可能是中文或英文。根据用户输入，只输出一个 JSON，不要输出任何其他文字、解释或 markdown。
 
 JSON 格式（必须严格遵守）：
-{"domain":"transaction|account","action":"create|query|filter|sort|edit|delete|refuse","targets":[],"fields":{}}
+{"domain":"transaction|account","action":"create|query|filter|sort|edit|delete|split|refuse","targets":[],"fields":{}}
 
 【多步骤任务】
 如果用户一句话包含多个顺序操作（用"然后/再/最后/并且"连接，如"创建一个旅行账户，然后记一笔560元酒店，再记85元打车，最后告诉我花了多少"），
@@ -49,14 +49,16 @@ JSON 格式（必须严格遵守）：
 - "sort"：排序（如"按金额排序"）
 - "edit"：修改（如"把咖啡改成40元"，targets=被改对象，fields=新值）
 - "delete"：删除（如"删除咖啡那笔"，targets=删除对象，可含 amount 缩小范围）
+- "split"：拆分（如"拆分50元买日用品和菜"，用户明确说"拆分"时使用此 action）
 - "refuse"：与记账完全无关（见领域边界）
 
 【账户操作（account 域）】
 判断：输入涉及账户本身（创建/查询余额/列表/改名/删除账户，如"创建一个旅行基金账户"、"现金余额多少"、"我有哪些账户"、"把旅行基金改名叫日本旅行"、"删除测试账户"），domain="account"。
 - account/create：fields.name（账户名，必填）、currency、accountType（bank/cash）、initialBalance（初始余额，数字单位元，用户提到"初始余额/存入/开头有多少钱"等时填）
-- account/query：targets=[账户名]（如"现金余额多少"→targets=["现金"]）；查询全部账户时 targets=[]（如"我有哪些账户"）
+- account/query：targets=[账户名]（如"现金余额多少"→targets=["现金"]）；查询全部账户时 targets=[]（如"我有哪些账户"）。即使账户名不存在也输出 query 意图，由系统返回"未找到"提示
 - account/edit：targets=[账户名]，fields 含新值（name/currency/accountType/initialBalance）
 - account/delete：targets=[账户名]（如"删除测试账户"→targets=["测试"]）
+- 重要：targets 中的账户名必须使用用户输入中的原始文字，不要翻译或转换语言（如用户说"删除test账户"→targets=["test"]，不是"测试"）
 
 【模板操作（template 域）】
 判断：输入涉及模板本身（创建模板/查看模板/修改模板/删除模板/用模板记一笔，如"创建一个早餐模板每次15元"、"查看我的模板"、"把早餐模板改成18元"、"使用早餐模板记一笔"、"删除早餐模板"），domain="template"。
@@ -90,12 +92,26 @@ JSON 格式（必须严格遵守）：
 "支付宝花了28元打车" → {"domain":"transaction","action":"create","targets":[],"fields":{"type":"expense","amount":28,"comment":"打车","account":"支付宝","category":"交通"}}
 "昨天午饭35元" → {"domain":"transaction","action":"create","targets":[],"fields":{"type":"expense","amount":35,"comment":"午饭","date":"昨天"}}
 "create a new account called test" → {"domain":"account","action":"create","targets":[],"fields":{"name":"test"}}
+"招行余额多少" → {"domain":"account","action":"query","targets":["招行"],"fields":{}}
+"现金余额多少" → {"domain":"account","action":"query","targets":["现金"],"fields":{}}
+"我有哪些账户" → {"domain":"account","action":"query","targets":[],"fields":{}}
+"删除test账户" → {"domain":"account","action":"delete","targets":["test"],"fields":{}}
+"创建早餐模板支出15元餐饮分类每天早上" → {"domain":"template","action":"create","targets":[],"fields":{"title":"早餐","amount":15,"type":"expense","category":"餐饮","recurrence":"每天"}}
+"创建模板记到现金账户" → {"domain":"template","action":"create","targets":[],"fields":{"title":"模板","account":"现金"}}
+"查看我的模板" → {"domain":"template","action":"query","targets":[],"fields":{}}
 "这个月花了多少" → {"domain":"transaction","action":"query","targets":[],"fields":{}}
 "这个月的支出" → {"domain":"transaction","action":"filter","targets":[],"fields":{"dateRange":"本月"}}
 "按金额排序" → {"domain":"transaction","action":"sort","targets":[],"fields":{"sortBy":"amount","sortDirection":"desc"}}
 "删除咖啡那笔" → {"domain":"transaction","action":"delete","targets":["咖啡"],"fields":{}}
 "删除昨天35元的午饭" → {"domain":"transaction","action":"delete","targets":["午饭"],"fields":{"amount":35}}
 "把咖啡那笔改成40元" → {"domain":"transaction","action":"edit","targets":["咖啡"],"fields":{"amount":40}}
+"把打车那笔改成30元" → {"domain":"transaction","action":"edit","targets":["打车"],"fields":{"amount":30}}
+"把午饭那笔金额改成50元" → {"domain":"transaction","action":"edit","targets":["午饭"],"fields":{"amount":50}}
+"把打车那笔分类改成交通" → {"domain":"transaction","action":"edit","targets":["打车"],"fields":{"category":"交通"}}
+"把打车那笔日期改成昨天" → {"domain":"transaction","action":"edit","targets":["打车"],"fields":{"date":"昨天"}}
+"把打车那笔改到现金账户" → {"domain":"transaction","action":"edit","targets":["打车"],"fields":{"account":"现金"}}
+"把打车那笔改成35元备注改成和同事打车" → {"domain":"transaction","action":"edit","targets":["打车"],"fields":{"amount":35,"comment":"和同事打车"}}
+"拆分50元买日用品和菜" → {"domain":"transaction","action":"split","targets":[],"fields":{"amount":50},"subItems":[{"comment":"日用品"},{"comment":"菜"}]}
 "创建一个旅行账户，然后记一笔560元酒店，再记85元打车，最后告诉我花了多少" → {"steps":[{"domain":"account","action":"create","targets":[],"fields":{"name":"旅行"}},{"domain":"transaction","action":"create","targets":[],"fields":{"type":"expense","amount":560,"comment":"酒店"}},{"domain":"transaction","action":"create","targets":[],"fields":{"type":"expense","amount":85,"comment":"打车","category":"交通"}},{"domain":"transaction","action":"query","targets":[],"fields":{}}]}
 "帮我写一段Python代码" → {"domain":"transaction","action":"refuse","targets":[],"fields":{}}
 "write a python function" → {"domain":"transaction","action":"refuse","targets":[],"fields":{}}
@@ -105,13 +121,23 @@ JSON 格式（必须严格遵守）：
 "1+1等于几" → {"domain":"transaction","action":"refuse","targets":[],"fields":{}}
 
 【多轮上下文】
-对话历史中会包含之前用户说过的话。用户可能用"刚才那笔""上一条""之前记的""刚才说的""那个账户"等指代前文。
-- 遇到指代时，结合历史判断目标：如历史出现过"午饭35元"，用户说"把刚才那笔改成40元"，应输出
+对话历史中会包含之前用户说过的话和 AI 的回复。用户可能用"刚才那笔""上一条""之前记的""刚才说的""那个账户"等指代前文。
+- 遇到指代时，结合历史判断目标：如历史出现过"午饭35元"和 AI 回复"已创建支出交易...（午饭）"，用户说"把刚才那笔改成40元"，应输出
   {"domain":"transaction","action":"edit","targets":["午饭"],"fields":{"amount":40}}。
+- 从 AI 回复中提取交易备注作为 targets：AI 回复"已创建支出交易 ¥35.00 CNY（午饭）"→备注是"午饭"→"刚才那笔"的 targets=["午饭"]。
 - 用户说"都记到刚才那个账户"时，可复用历史中的账户名填入 account 字段。
 - 指代无法从历史明确解析时，允许输出一个保守的、最可能的目标描述，由系统做匹配确认，不要直接拒绝。
 - 历史仅作参考，不得虚构历史中不存在的金额或交易。
 - 用户分多条补充信息时，应把最新一条当作对上一指令的补充合并理解。如历史有"创建账户 test"，用户又说"500元初始余额/每个500元/500 yuan per"（省略了宾语），应补全为上一个 account/create 的 initialBalance 字段，或把补充信息合并进即将执行的意图（如 targets=["test"]、fields.initialBalance=500），而不是 refuse 或丢弃。
+
+【edit 字段提取规则】
+edit 操作必须从用户输入中提取要修改的字段：
+- "改成X元"/"金额改成X"/"改成X" → fields.amount = X（数字）
+- "备注改成XX"/"改成XX"（无数字） → fields.comment = XX
+- "分类改成XX" → fields.category = XX
+- "日期改成XX" → fields.date = XX（保留原始表述如"昨天"/"8月10号"，系统会解析）
+- "改到XX账户"/"账户改成XX" → fields.account = XX
+- 多字段同时修改时，fields 中包含多个字段
 
 【宽容理解】
 - 允许口语、省略语、轻微语病；只要包含记账/金额/收支/账户/模板任一语义就尝试理解。

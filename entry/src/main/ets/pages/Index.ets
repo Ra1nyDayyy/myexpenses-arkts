@@ -584,6 +584,11 @@ struct Index {
                 }
                 .width('100%')
 
+                this.moreSheetRow($r('app.media.ic_balance'), '资产负债表', '查看资产与负债', () => {
+                  this.moreSheetVisible = false;
+                  router.pushUrl({ url: 'pages/BalanceSheet' }).catch(() => {
+                  });
+                })
                 this.moreSheetRow($r('app.media.ic_chart'), '预算编制', '管理预算和支出目标', () => {
                   this.moreSheetVisible = false;
                   this.pathStack.pushPathByName('BudgetManage', null);
@@ -642,6 +647,12 @@ struct Index {
         .fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.textPrimary'))
         .margin({ top: 8, bottom: 8 })
+
+      this.moreSheetRow($r('app.media.ic_balance'), '资产负债表', '查看资产与负债', () => {
+        this.moreSheetVisible = false;
+        router.pushUrl({ url: 'pages/BalanceSheet' }).catch(() => {
+        });
+      })
 
       this.moreSheetRow($r('app.media.ic_chart'), '预算编制', '管理预算和支出目标', () => {
         this.moreSheetVisible = false;
@@ -1545,15 +1556,24 @@ struct Index {
   private async useTemplate(tpl: Template): Promise<void> {
     // 对齐安卓模板业务流程（TemplatesList）：按 default_action 分发
     // SAVE：点击直接创建交易；EDIT：打开编辑页预填模板数据（拆分/外汇转账也走编辑）
-    if (tpl.defaultAction === 'EDIT' || tpl.isSplit()) {
-      router.pushUrl({ url: 'pages/ExpenseEdit', params: { fromTemplateId: tpl.id } }).catch(() => {
-      });
-      return;
-    }
-    const txId = await this.repository.instantiateTemplate(tpl);
-    if (txId > 0) {
-      promptAction.showToast({ message: $r('app.string.toast_tx_generated') });
-      await this.loadData();
+    try {
+      if (tpl.defaultAction === 'EDIT' || tpl.isSplit()) {
+        await router.pushUrl({ url: 'pages/ExpenseEdit', params: { fromTemplateId: tpl.id } })
+          .catch((err: Error) => {
+            promptAction.showToast({ message: `打开模板失败：${err.message ?? err}` });
+          });
+        return;
+      }
+      const txId = await this.repository.instantiateTemplate(tpl);
+      if (txId > 0) {
+        promptAction.showToast({ message: $r('app.string.toast_tx_generated') });
+        await this.loadData();
+      } else {
+        promptAction.showToast({ message: '创建交易失败，请重试' });
+      }
+    } catch (e) {
+      const msg = (e as Error)?.message ?? String(e);
+      promptAction.showToast({ message: `模板应用失败：${msg}` });
     }
   }
 
@@ -2457,7 +2477,7 @@ struct Index {
               .fontColor($r('app.color.colorTransfer'))
               .fontWeight(FontWeight.Medium)
           }
-          Text('转帐')
+          Text('转账')
             .fontSize(11)
             .fontColor($r('app.color.textSecondary'))
         }
@@ -2658,23 +2678,21 @@ struct Index {
 
   /**
    * 删除确认框：防止误删（对齐安卓删除确认）
+   * 使用 promptAction.showDialog（与 deleteAccount 一致，已验证按钮回调可靠）
    */
   private confirmDeleteTransaction(tx: Transaction): void {
-    this.getUIContext().showAlertDialog({
+    promptAction.showDialog({
       title: '删除交易',
       message: '确定要删除这笔交易吗？此操作不可恢复。',
-      primaryButton: {
-        value: '取消',
-        action: () => {
-        }
-      },
-      secondaryButton: {
-        value: '删除',
-        fontColor: $r('app.color.colorExpense'),
-        action: () => {
-          this.deleteTransaction(tx);
-        }
+      buttons: [
+        { text: '取消', color: '#808080' },
+        { text: '删除', color: '#E53935' }
+      ]
+    }).then((result) => {
+      if (result.index === 1) {
+        this.deleteTransaction(tx);
       }
+    }).catch(() => {
     });
   }
 
@@ -2745,21 +2763,18 @@ struct Index {
     if (ids.length === 0) {
       return;
     }
-    this.getUIContext().showAlertDialog({
+    promptAction.showDialog({
       title: '批量删除',
       message: `确定要删除选中的 ${ids.length} 笔交易吗？此操作不可恢复。`,
-      primaryButton: {
-        value: '取消',
-        action: () => {
-        }
-      },
-      secondaryButton: {
-        value: '删除',
-        fontColor: $r('app.color.colorExpense'),
-        action: () => {
-          this.doDeleteSelected(ids);
-        }
+      buttons: [
+        { text: '取消', color: '#808080' },
+        { text: '删除', color: '#E53935' }
+      ]
+    }).then((result) => {
+      if (result.index === 1) {
+        this.doDeleteSelected(ids);
       }
+    }).catch(() => {
     });
   }
 

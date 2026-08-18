@@ -1085,6 +1085,41 @@ export class Repository {
     return this.store().delete(predicates);
   }
 
+  async updateBudget(budget: Budget): Promise<number> {
+    const values: relationalStore.ValuesBucket = {
+      'title': budget.title,
+      'description': budget.description,
+      'account_id': budget.accountId >= 0 ? budget.accountId : null,
+      'currency': budget.currency
+    };
+    const predicates = new relationalStore.RdbPredicates('budgets');
+    predicates.equalTo('id', budget.id);
+    const rows = await this.store().update(values, predicates);
+    // 更新预算金额（budget_allocations 表中 cat_id=0 的记录）
+    if (budget.budgetAmount > 0) {
+      const allocPredicates = new relationalStore.RdbPredicates('budget_allocations');
+      allocPredicates.equalTo('budget_id', budget.id);
+      allocPredicates.equalTo('cat_id', 0);
+      const allocValues: relationalStore.ValuesBucket = {
+        'budget': budget.budgetAmount
+      };
+      const updated = await this.store().update(allocValues, allocPredicates);
+      if (updated === 0) {
+        // 不存在则插入
+        const newAllocValues: relationalStore.ValuesBucket = {
+          'budget_id': budget.id,
+          'cat_id': 0,
+          'year': null,
+          'second': null,
+          'budget': budget.budgetAmount,
+          'roll_over_previous': 0
+        };
+        await this.store().insert('budget_allocations', newAllocValues);
+      }
+    }
+    return rows;
+  }
+
   // ==================== 债务 ====================
 
   async getDebts(): Promise<Debt[]> {

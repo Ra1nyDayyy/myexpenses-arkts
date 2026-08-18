@@ -1,0 +1,9 @@
+{
+  "page": "AiAssistant",
+  "dimension": "D1",
+  "severity": "P3",
+  "summary": "AiAssistant对话流程未完成走查：专用模拟器实例16555在输入中文文本时断开连接，AI响应验证无法继续。主界面已留证(03_main)，标注LLM-DEPENDENT+设备中断",
+  "repro": "AiAssistant→点输入框→输入'记一笔午餐支出30元'→设备16555断连",
+  "evidence": ["evidence/iter1/AiAssistant/03_main_ui.jpeg", "evidence/iter1/AiAssistant/03_main_dump.json"],
+  "foundAt": "2026-08-18T04:46"
+}

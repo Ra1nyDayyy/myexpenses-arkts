@@ -1,0 +1,9 @@
+{
+  "page": "Distribution",
+  "dimension": "D5",
+  "severity": "P2",
+  "summary": "分布图分类项不可点击查看详情，clickable=false，点击后无反馈无跳转",
+  "repro": "交易Tab→右上角菜单→分布图→点击分类项'餐饮'",
+  "evidence": ["evidence/iter2/Distribution/04_category_click_ui.jpeg"],
+  "foundAt": "2026-08-18T14:14"
+}

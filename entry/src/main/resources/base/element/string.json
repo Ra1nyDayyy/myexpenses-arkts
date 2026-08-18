@@ -34,7 +34,7 @@
     },
     {
       "name": "transfer",
-      "value": "转帐"
+      "value": "转账"
     },
     {
       "name": "split_transaction",
@@ -98,7 +98,7 @@
     },
     {
       "name": "sum_transfer",
-      "value": "转帐"
+      "value": "转账"
     },
     {
       "name": "total_cleared",
@@ -134,7 +134,7 @@
     },
     {
       "name": "menu_create_transfer",
-      "value": "新建转帐"
+      "value": "新建转账"
     },
     {
       "name": "menu_create_split",
@@ -567,6 +567,10 @@
     {
       "name": "permission_read_image_reason",
       "value": "用于读取所选图片发送给 AI 理解"
+    },
+    {
+      "name": "permission_microphone_reason",
+      "value": "用于语音输入记账内容"
     },
     {
       "name": "toast_enter_account_name",

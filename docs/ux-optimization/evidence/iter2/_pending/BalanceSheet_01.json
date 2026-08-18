@@ -1,0 +1,9 @@
+{
+  "page": "BalanceSheet",
+  "dimension": "D5",
+  "severity": "P2",
+  "summary": "BalanceSheet(报表)页面入口未找到，首页底部Tab无报表，更多菜单只有预算/债务/设置，交易Tab菜单只有分布图/历史记录/导出/筛选",
+  "repro": "首页→更多Tab(只有预算编制/交易对手债务/设置)→交易Tab右上角菜单(只有分组/排序/分布图/历史记录/导出CSV/筛选)",
+  "evidence": [],
+  "foundAt": "2026-08-18T14:26"
+}

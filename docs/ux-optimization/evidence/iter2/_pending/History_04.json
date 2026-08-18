@@ -1,0 +1,9 @@
+{
+  "page": "History",
+  "dimension": "D5",
+  "severity": "P2",
+  "summary": "历史记录页面'近6个月'时间范围选择器点击无响应，无法切换时间范围",
+  "repro": "交易Tab→右上角菜单→历史记录→点击'近6个月'",
+  "evidence": ["evidence/iter2/History/04_time_range_ui.jpeg"],
+  "foundAt": "2026-08-18T14:17"
+}

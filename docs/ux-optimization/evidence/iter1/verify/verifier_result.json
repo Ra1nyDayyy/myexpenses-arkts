@@ -1,0 +1,46 @@
+{
+  "verifier": "Verifier-1",
+  "date": "2026-08-18",
+  "device": "127.0.0.1:16555",
+  "hap": "new-build-ux-fix-iter1",
+  "results": [
+    {
+      "id": "UX-0001",
+      "verdict": "VERIFIED",
+      "evidence": [
+        "verify/V1_text_fix_ui.jpeg",
+        "verify/V1_text_fix_dump.json"
+      ],
+      "note": "汇总区文案已从'转帐'修复为'转账'，全文检索含'转账'=True, 含'转帐'=False"
+    },
+    {
+      "id": "UX-0002",
+      "verdict": "VERIFIED",
+      "evidence": [
+        "verify/V2_transfer_hint_ui.jpeg",
+        "verify/V2_transfer_hint_dump.json"
+      ],
+      "note": "转账Tab下'至'字段显示提示文本'请先创建另一个账户'，替代无响应Select"
+    },
+    {
+      "id": "UX-0003",
+      "verdict": "VERIFIED",
+      "evidence": [
+        "verify/V3_back_confirm_ui.jpeg",
+        "verify/V3_back_confirm_dump.json"
+      ],
+      "note": "编辑交易修改金额后按Back弹出AlertDialog'放弃修改？当前修改尚未保存，确定要放弃并退出吗？'，按钮'继续编辑'/'放弃'"
+    },
+    {
+      "id": "UX-0004",
+      "verdict": "VERIFIED",
+      "evidence": [
+        "verify/V4_dialog_dump.json",
+        "verify/V4_delete_works_ui.jpeg",
+        "verify/V4_delete_works_dump.json"
+      ],
+      "note": "删除交易AlertDialog'删除交易/确定要删除这笔交易吗？此操作不可恢复。'确认后交通交易被删除，余额¥930→¥950，支出¥-70→¥-50，数据联动正确"
+    }
+  ],
+  "summary": "4/4 验证通过"
+}

@@ -1,0 +1,9 @@
+{
+  "page": "CategoryManage",
+  "dimension": "D4",
+  "severity": "P2",
+  "summary": "编辑分类时输入框未预填充当前分类名称，hint仍为'分类名称'占位符，用户无法知道正在编辑哪个分类",
+  "repro": "设置→数据→管理类别→点击某分类右侧编辑(铅笔)图标→弹出'编辑分类'对话框→TextInput为空且hint='分类名称'",
+  "evidence": ["evidence/iter2/CategoryManage/05_edit_form_ui.jpeg", "evidence/iter2/CategoryManage/05_edit_form_dump.json"],
+  "foundAt": "2026-08-18T13:42"
+}

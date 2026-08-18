@@ -80,7 +80,7 @@ export struct AccountDetailDialog {
         this.detailRow('支出', this.format(this.sumExpense), $r('app.color.colorExpense'))
       }
       if (this.sumTransfer !== 0) {
-        this.detailRow('转帐', this.format(this.sumTransfer), $r('app.color.colorTransfer'))
+        this.detailRow('转账', this.format(this.sumTransfer), $r('app.color.colorTransfer'))
       }
       Divider()
         .color($r('app.color.dividerColor'))

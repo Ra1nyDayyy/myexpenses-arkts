@@ -95,7 +95,12 @@ export struct SearchCriterionDialog {
       resultValue = p ? p.name : '';
       resultOp = '等于';
     }
-    this.onResult(resultOp, resultValue, this.extra);
+    // comment 类型没有支出/收入切换，不传 extra
+    if (this.criterionType === 'comment') {
+      this.onResult(resultOp, resultValue, undefined);
+    } else {
+      this.onResult(resultOp, resultValue, this.extra);
+    }
     this.onClose();
   }
 

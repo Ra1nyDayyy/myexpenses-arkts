@@ -1,7 +1,7 @@
 import { Account, AccountType, AccountGrouping } from '../model/Account';
 import { Repository } from '../database/Repository';
 import { Tag } from '../model/SupportEntities';
-import { CurrencyUnit, COMMON_CURRENCIES } from '../model/CurrencyUnit';
+import { CurrencyUnit, COMMON_CURRENCIES, currencyByCode } from '../model/CurrencyUnit';
 import { PageHeader } from '../components/PageHeader';
 import { CalculatorDialog } from '../components/CalculatorDialog';
 import { AccountColorDialog } from '../components/ColorPickerDialog';
@@ -102,24 +102,37 @@ struct AccountEdit {
   async loadAccount(): Promise<void> {
     const acc = await this.repository.getAccount(this.accountId);
     if (acc) {
+      // 调试日志：确认 acc.currency 和 acc.openingBalance 的实际值
+      console.error(`[UX0024-DEBUG] acc.currency=${acc.currency} acc.openingBalance=${acc.openingBalance}`);
+      const debugDigits = currencyByCode(acc.currency).fractionDigits;
+      console.error(`[UX0024-DEBUG] currencyByCode(${acc.currency}).fractionDigits=${debugDigits}`);
+      const debugFormatted = formatMoney(Math.abs(acc.openingBalance), debugDigits);
+      console.error(`[UX0024-DEBUG] formatMoney(${Math.abs(acc.openingBalance)}, ${debugDigits})=${debugFormatted}`);
       this.label = acc.label;
       this.description = acc.description;
-      this.openingBalanceInput = formatMoney(Math.abs(acc.openingBalance), this.fractionDigits());
-      this.openingPositive = acc.openingBalance >= 0;
+      // 先设置货币，再计算金额显示字符串，确保 fractionDigits 基于实际账户货币
+      // 修复 UX-0024：此前 currency 在 formatMoney 之后才赋值，导致 fractionDigits 用初始货币计算，
+      // 与 AccountRow 的 currencyByCode 实现不一致，显示成无小数点的整数（如 "100000"），
+      // 保存时 parseMoney 按正确 fractionDigits 解析，余额被放大 100 倍。
       this.currency = acc.currency;
+      const digits = currencyByCode(acc.currency).fractionDigits;
+      this.openingBalanceInput = formatMoney(Math.abs(acc.openingBalance), digits);
+      console.error(`[UX0024-DEBUG] openingBalanceInput=${this.openingBalanceInput}`);
+      this.openingPositive = acc.openingBalance >= 0;
       this.type = acc.type;
       this.color = acc.color;
       this.excludeFromTotals = acc.excludeFromTotals;
       if (acc.criterion !== 0) {
-        this.criterionInput = formatMoney(Math.abs(acc.criterion), this.fractionDigits());
+        this.criterionInput = formatMoney(Math.abs(acc.criterion), digits);
         this.criterionPositive = acc.criterion >= 0;
       }
     }
   }
 
   private fractionDigits(): number {
-    const c = this.currencies.find((item: CurrencyUnit) => item.code === this.currency);
-    return c ? c.fractionDigits : 2;
+    // 与 AccountRow.ets 保持一致：使用 currencyByCode 而非 this.currencies.find，
+    // 避免数组初始化时机或状态不同步导致返回错误的小数位（UX-0024 根因）。
+    return currencyByCode(this.currency).fractionDigits;
   }
 
   private currencySymbol(): string {
@@ -412,7 +425,7 @@ struct AccountEdit {
               .fontColor(this.openingPositive ? $r('app.color.colorIncome') : $r('app.color.colorExpense'))
               .margin({ left: 4 })
             TextInput({ placeholder: '0.00', text: this.openingBalanceInput })
-              .type(InputType.Number)
+              .type(InputType.NUMBER_DECIMAL)
               .layoutWeight(1)
               .onChange((v: string) => {
                 this.openingBalanceInput = v;
@@ -573,7 +586,7 @@ struct AccountEdit {
               .fontColor(this.criterionPositive ? $r('app.color.colorIncome') : $r('app.color.colorExpense'))
               .margin({ left: 4 })
             TextInput({ placeholder: '0.00', text: this.criterionInput })
-              .type(InputType.Number)
+              .type(InputType.NUMBER_DECIMAL)
               .layoutWeight(1)
               .onChange((v: string) => {
                 this.criterionInput = v;
