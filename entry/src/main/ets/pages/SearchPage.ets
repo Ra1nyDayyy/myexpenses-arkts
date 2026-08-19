@@ -82,7 +82,28 @@ import { EmptyState } from '../components/EmptyState';
 
   // ============ 执行搜索 ============
   private async executeSearch(): Promise<void> {
-    this.results = await this.repository.searchTransactions(this.criteria);
+    // 分类多选条件本地 IN 过滤（Repository.searchTransactions 的 category 分支仅支持单值匹配，
+    // 此处拆出 category IN 条件，剩余条件交 Repository，再对结果按 categoryId 集合做 OR 过滤，
+    // 对齐安卓 CategoryCriterion.getSelection 的 IN (...) 子句语义）
+    const categoryCriteria = this.criteria.filter((c: SearchCriterion) =>
+      c.type === 'category' && c.op === 'IN' && c.value.length > 0);
+    const otherCriteria = this.criteria.filter((c: SearchCriterion) =>
+      !(c.type === 'category' && c.op === 'IN'));
+    let results: Transaction[] = await this.repository.searchTransactions(otherCriteria);
+    if (categoryCriteria.length > 0) {
+      const categoryIdSet: Array<number> = [];
+      for (let i = 0; i < categoryCriteria.length; i++) {
+        const parts = categoryCriteria[i].value.split(',');
+        for (let j = 0; j < parts.length; j++) {
+          const id = parseInt(parts[j], 10);
+          if (!isNaN(id) && categoryIdSet.indexOf(id) < 0) {
+            categoryIdSet.push(id);
+          }
+        }
+      }
+      results = results.filter((t: Transaction) => categoryIdSet.indexOf(t.categoryId) >= 0);
+    }
+    this.results = results;
     this.searched = true;
   }
 
@@ -121,6 +142,11 @@ import { EmptyState } from '../components/EmptyState';
 
   private criterionLabel(c: SearchCriterion): string {
     const typeLabel: string = this.typeLabelOf(c.type);
+    // 分类多选：extra 存标签拼接（友好显示），value 存 ID 拼接（数据层 IN 过滤用）
+    if (c.type === 'category' && c.op === 'IN') {
+      const display = c.extra && c.extra.length > 0 ? c.extra : c.value;
+      return `${typeLabel} ${c.op} ${display}`;
+    }
     let label = `${typeLabel} ${c.op} ${c.value}`;
     if (c.extra) {
       label = `${typeLabel}(${c.extra}) ${c.op} ${c.value}`;

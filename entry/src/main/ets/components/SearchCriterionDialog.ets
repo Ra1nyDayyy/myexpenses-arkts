@@ -35,7 +35,8 @@ export struct SearchCriterionDialog {
   @State value: string = '';
   @State extra: string = '支出';
   @State selectedAccountId: number = -1;
-  @State selectedCategoryId: number = -1;
+  /** 分类多选 ID 列表（对齐安卓 CategoryCriterion.values: List<Long> + MultiChoiceMode） */
+  @State selectedCategoryIds: Array<number> = [];
   @State selectedMethodId: number = -1;
   @State selectedTagId: number = -1;
   @State selectedPayeeId: number = -1;
@@ -74,14 +75,17 @@ export struct SearchCriterionDialog {
   private confirm(): void {
     let resultValue = this.value;
     let resultOp = this.op;
+    let resultExtra: string = this.extra;
     if (this.criterionType === 'account' && this.selectedAccountId > 0) {
       const acc = this.accountList.find((a: Account) => a.id === this.selectedAccountId);
       resultValue = acc ? acc.label : '';
       resultOp = '等于';
-    } else if (this.criterionType === 'category' && this.selectedCategoryId >= 0) {
-      const cat = this.categoryList.find((c: Category) => c.id === this.selectedCategoryId);
-      resultValue = cat ? cat.label : '';
-      resultOp = '等于';
+    } else if (this.criterionType === 'category' && this.selectedCategoryIds.length > 0) {
+      // 多选：value=ID 数组逗号分隔（数据层 IN 过滤用），extra=标签数组逗号分隔（条件列表显示用）
+      const selectedCats = this.categoryList.filter((c: Category) => this.selectedCategoryIds.indexOf(c.id) >= 0);
+      resultValue = selectedCats.map((c: Category) => c.id.toString()).join(',');
+      resultExtra = selectedCats.map((c: Category) => c.label).join(',');
+      resultOp = 'IN';
     } else if (this.criterionType === 'method' && this.selectedMethodId >= 0) {
       const m = this.methodList.find((mm: PaymentMethod) => mm.id === this.selectedMethodId);
       resultValue = m ? m.label : '';
@@ -99,7 +103,7 @@ export struct SearchCriterionDialog {
     if (this.criterionType === 'comment') {
       this.onResult(resultOp, resultValue, undefined);
     } else {
-      this.onResult(resultOp, resultValue, this.extra);
+      this.onResult(resultOp, resultValue, resultExtra);
     }
     this.onClose();
   }
@@ -307,7 +311,7 @@ export struct SearchCriterionDialog {
         .margin({ top: 8 })
       }
 
-      // 分类：列表选择（对齐安卓 CategoryCriterion）
+      // 分类：列表多选（对齐安卓 CategoryCriterion.values: List<Long> + ManageCategories MultiChoiceMode）
       if (this.criterionType === 'category') {
         Column() {
           ForEach(this.categoryList, (cat: Category) => {
@@ -318,22 +322,28 @@ export struct SearchCriterionDialog {
                 .layoutWeight(1)
                 .maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
-              Radio({ value: cat.id.toString(), group: 'catGroup' })
-                .checked(this.selectedCategoryId === cat.id)
-                .radioStyle({
-                  checkedBackgroundColor: $r('app.color.primaryColor'),
-                  uncheckedBorderColor: $r('app.color.textSecondary')
-                })
+              Checkbox({ name: `cat_${cat.id}` })
+                .select(this.selectedCategoryIds.indexOf(cat.id) >= 0)
+                .selectedColor($r('app.color.primaryColor'))
                 .onChange((checked: boolean) => {
                   if (checked) {
-                    this.selectedCategoryId = cat.id;
+                    if (this.selectedCategoryIds.indexOf(cat.id) < 0) {
+                      this.selectedCategoryIds = this.selectedCategoryIds.concat([cat.id]);
+                    }
+                  } else {
+                    this.selectedCategoryIds = this.selectedCategoryIds.filter((id: number) => id !== cat.id);
                   }
                 })
             }
             .width('100%')
             .height(44)
             .onClick(() => {
-              this.selectedCategoryId = cat.id;
+              const idx = this.selectedCategoryIds.indexOf(cat.id);
+              if (idx >= 0) {
+                this.selectedCategoryIds = this.selectedCategoryIds.filter((id: number) => id !== cat.id);
+              } else {
+                this.selectedCategoryIds = this.selectedCategoryIds.concat([cat.id]);
+              }
             })
           }, (cat: Category) => `cat_${cat.id}`)
         }

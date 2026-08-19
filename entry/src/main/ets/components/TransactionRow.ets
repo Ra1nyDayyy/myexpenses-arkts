@@ -38,24 +38,31 @@ export struct TransactionRow {
     if (this.transaction.isSplit()) {
       return '拆分交易';
     }
-    // 对齐安卓 buildPrimaryInfo：无分类时显示备注/收款人，避免"未分类"占位
+    // 对齐安卓 buildPrimaryInfo：主标题始终为分类路径；无分类时回退收款人（备注始终在副标题，BUG-026/TC009）
     if (this.transaction.categoryPath && this.transaction.categoryPath.length > 0) {
       return this.transaction.categoryPath;
     }
-    return this.transaction.comment || this.transaction.payeeName || '';
+    return this.transaction.payeeName || '';
   }
 
   private secondaryText(): string {
     const parts: string[] = [];
+    // 备注（comment）始终作为副标题首段展示（对齐安卓交易行备注显示，BUG-026/TC009）：
+    // primaryText 不再返回 comment，无需去重
+    if (this.transaction.comment && this.transaction.comment.length > 0) {
+      parts.push(this.transaction.comment);
+    }
     if (this.transaction.methodLabel) {
       parts.push(this.transaction.methodLabel);
     }
-    // 主标题已含分类或备注，副标题补充收款人（避免重复）
-    if (this.transaction.payeeName && this.transaction.payeeName !== this.primaryText()) {
+    // 主标题已含分类或收款人，副标题补充收款人（避免与主标题重复）
+    const primary = this.primaryText();
+    if (this.transaction.payeeName && this.transaction.payeeName !== primary) {
       parts.push(this.transaction.payeeName);
     }
     return parts.join(' · ');
   }
+
 
   private amountColor(): ResourceColor {
     if (this.transaction.isTransfer()) {

@@ -170,35 +170,31 @@ export struct AccountRow {
           // sealed 账户不可编辑，需先解除关闭再编辑）
           Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.End }) {
             if (!this.account.sealed) {
-              this.accountAction('编辑', $r('app.color.primaryColor'), '编辑账户', () => {
-                this.onEdit(this.account.id);
-              })
+              this.accountAction('edit', '编辑', $r('app.color.primaryColor'), '编辑账户')
             }
             this.accountFlagAction()
             this.accountAction(
+              'toggleExclude',
               this.account.excludeFromTotals ? '计入总数' : '不计入总数',
               $r('app.color.primaryColor'),
-              this.account.excludeFromTotals ? '将账户计入总数' : '将账户移出总数',
-              () => this.onToggleExclude(this.account.id)
+              this.account.excludeFromTotals ? '将账户计入总数' : '将账户移出总数'
             )
             this.accountAction(
+              'toggleSealed',
               this.account.sealed ? '解除关闭' : '关闭账户',
               $r('app.color.textTertiary'),
-              this.account.sealed ? '重新打开账户' : '关闭账户',
-              () => this.onToggleSealed(this.account.id)
+              this.account.sealed ? '重新打开账户' : '关闭账户'
             )
             // 动态汇率（对齐安卓 DYNAMIC_EXCHANGE_RATE：仅外币账户显示）
             if (this.account.currency !== 'CNY') {
               this.accountAction(
+                'toggleDynamic',
                 this.account.dynamic ? '动态汇率：开' : '动态汇率：关',
                 $r('app.color.primaryColor'),
-                '切换动态汇率',
-                () => this.onToggleDynamicExchangeRate(this.account.id)
+                '切换动态汇率'
               )
             }
-            this.accountAction('删除', $r('app.color.colorExpense'), '删除账户', () => {
-              this.onDelete(this.account.id);
-            }, true)
+            this.accountAction('delete', '删除', $r('app.color.colorExpense'), '删除账户', true)
           }
           .width('100%')
           .margin({ top: 6 })
@@ -213,9 +209,12 @@ export struct AccountRow {
     .margin({ left: 12, right: 12, bottom: 8 })
   }
 
+  // FIX-050: 重构 accountAction 去除函数参数（ArkTS @Builder 函数参数在条件渲染中
+  // 存在调用不稳定问题），改为 action 标识符在 Builder 内部直接调用 this.onXxx 回调，
+  // 确保 onClick 闭包正确绑定组件实例（修复 BUG-029 点击账户无法锁定）
   @Builder
-  accountAction(label: string, color: ResourceColor, accessibilityLabel: string,
-    onClick: () => void, destructive: boolean = false) {
+  accountAction(action: string, label: string, color: ResourceColor, accessibilityLabel: string,
+    destructive: boolean = false) {
     Button(label)
       .height($r('app.float.native_touch_target'))
       .padding({ left: 10, right: 10 })
@@ -226,7 +225,27 @@ export struct AccountRow {
       .fontColor(color)
       .stateEffect(true)
       .accessibilityText(accessibilityLabel)
-      .onClick(onClick)
+      .onClick(() => {
+        switch (action) {
+          case 'edit':
+            this.onEdit(this.account.id);
+            break;
+          case 'delete':
+            this.onDelete(this.account.id);
+            break;
+          case 'toggleSealed':
+            this.onToggleSealed(this.account.id);
+            break;
+          case 'toggleExclude':
+            this.onToggleExclude(this.account.id);
+            break;
+          case 'toggleDynamic':
+            this.onToggleDynamicExchangeRate(this.account.id);
+            break;
+          default:
+            break;
+        }
+      })
   }
 
   @Builder

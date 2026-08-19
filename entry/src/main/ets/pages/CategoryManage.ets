@@ -147,8 +147,26 @@ struct CategoryManage {
     cat.label = label.trim();
     cat.labelNormalized = cat.label;
     cat.parentId = parentId;
-    cat.type = parentId === 0 ? -1 : this.editTarget?.type || -1;
+    // 新增主分类：按当前筛选 Tab 设定类型（支出 Tab→-1 / 收入 Tab→1 / 全部→-1 默认支出）
+    // 新增子分类：继承父分类类型
+    cat.type = parentId === 0 ? (this.catFilter !== 0 ? this.catFilter : -1) : (this.editTarget?.type || -1);
     await this.repository.insertCategory(cat);
+    this.editTarget = null;
+    await this.load();
+  }
+
+  /**
+   * 编辑现有分类（对齐安卓 editCat → saveCategory）
+   * 仅修改 label/label_normalized，其余字段沿用原对象
+   */
+  private async editCategory(cat: Category, newLabel: string): Promise<void> {
+    if (!newLabel.trim() || newLabel.trim() === cat.label) {
+      this.editTarget = null;
+      return;
+    }
+    cat.label = newLabel.trim();
+    cat.labelNormalized = cat.label;
+    await this.repository.updateCategory(cat);
     this.editTarget = null;
     await this.load();
   }
@@ -161,6 +179,27 @@ struct CategoryManage {
         initialLabel: target ? target.label : '',
         onConfirm: (label: string) => {
           this.addCategory(label, parentId);
+        }
+      }),
+      autoCancel: true,
+      alignment: DialogAlignment.Center,
+      customStyle: false,
+      cornerRadius: 12
+    });
+    this.dialog.open();
+  }
+
+  /**
+   * 打开编辑分类对话框（对齐安卓 EDIT_CATEGORY 菜单）
+   */
+  private openEditDialog(cat: Category): void {
+    this.editTarget = cat;
+    this.dialog = new CustomDialogController({
+      builder: CategoryInputDialog({
+        title: '编辑分类',
+        initialLabel: cat.label,
+        onConfirm: (label: string) => {
+          this.editCategory(cat, label);
         }
       }),
       autoCancel: true,
@@ -196,12 +235,19 @@ struct CategoryManage {
     Column() {
       PageHeader({
         title: '类别',
-        rightText: '+',
+        rightText: this.dragEditMode ? '完成' : '+',
+        showMore: true,
+        moreMenu: this.buildSortMenu(),
         onBack: () => {
           router.back();
         },
         onRight: () => {
-          this.openAddDialog(0, null);
+          // 拖拽排序模式下"完成"退出排序；普通模式下"+"新增主分类
+          if (this.dragEditMode) {
+            this.dragEditMode = false;
+          } else {
+            this.openAddDialog(0, null);
+          }
         }
       })
 
@@ -239,25 +285,44 @@ struct CategoryManage {
   }
 
   /**
-   * 长按进入分类拖拽排序（对齐安卓拖拽排序）
-   */
-  private enableDrag(): void {
-    this.dragEditMode = true;
-  }
 
-  /**
    * 分类拖拽重排（内存重排根分类 + 持久化排序号）
+   * onItemMove 的 from/to 是当前渲染列表（getFilteredCategories）的索引，
+   * 需通过 id 映射到 this.categories 的真实索引，避免筛选状态下索引错位。
    */
   private reorderCategories(from: number, to: number): void {
-    if (from < 0 || to < 0 || from >= this.categories.length || to >= this.categories.length || from === to) {
+    const filtered = this.getFilteredCategories();
+    if (from < 0 || to < 0 || from >= filtered.length || to >= filtered.length || from === to) {
       return;
     }
-    const item = this.categories.splice(from, 1)[0];
-    this.categories.splice(to, 0, item);
+    const movedId = filtered[from].id;
+    const targetId = filtered[to].id;
+    const fromIdx = this.categories.findIndex((c: Category) => c.id === movedId);
+    const toIdx = this.categories.findIndex((c: Category) => c.id === targetId);
+    if (fromIdx < 0 || toIdx < 0) {
+      return;
+    }
+    const item = this.categories.splice(fromIdx, 1)[0];
+    this.categories.splice(toIdx, 0, item);
     this.categories = [...this.categories];
     // 持久化根分类顺序
     const rootIds = this.categories.map((c: Category) => c.id);
     this.repository.updateCategoryOrders(rootIds);
+  }
+
+  /**
+   * 右上角更多菜单（对齐安卓 SortDelegate 排序入口）
+   * 拖拽排序模式下点击退出
+   */
+  private buildSortMenu(): Array<MenuElement> {
+    const menu: Array<MenuElement> = [];
+    menu.push({
+      value: this.dragEditMode ? '退出拖拽排序' : '拖拽排序',
+      action: () => {
+        this.dragEditMode = !this.dragEditMode;
+      }
+    } as MenuElement);
+    return menu;
   }
 
   @Builder
@@ -334,6 +399,15 @@ struct CategoryManage {
             .backgroundColor($r('app.color.surfaceIncomeSoft'))
             .margin({ right: 8 })
         }
+
+        Image($r('sys.media.ohos_ic_public_edit'))
+          .width(18)
+          .height(18)
+          .opacity(0.6)
+          .margin({ right: 12 })
+          .onClick(() => {
+            this.openEditDialog(cat);
+          })
 
         Image($r('sys.media.ohos_ic_public_add'))
           .width(18)

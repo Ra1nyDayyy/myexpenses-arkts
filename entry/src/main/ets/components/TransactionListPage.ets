@@ -38,13 +38,15 @@ export struct TransactionListPage {
   };
 
   /**
-   * 构建交易行操作菜单项（详情/编辑/删除），action 通过回调交由父页面处理
+   * 构建交易行操作菜单项（详情/编辑/删除/保存为模板），action 通过回调交由父页面处理
    */
   private menuItemsFor(t: Transaction): Array<MenuElement> {
     return [
       { value: '详细信息', action: () => { this.onMenuAction(t.id, 'detail'); } },
       { value: '编辑', action: () => { this.onMenuAction(t.id, 'edit'); } },
-      { value: '删除', action: () => { this.onMenuAction(t.id, 'delete'); } }
+      { value: '删除', action: () => { this.onMenuAction(t.id, 'delete'); } },
+      // FIX-050/TC008：追加"保存为模板"菜单项，action='save_as_template' 由 Index.handleTransactionMenuAction 处理
+      { value: '保存为模板', action: () => { this.onMenuAction(t.id, 'save_as_template'); } }
     ];
   }
 
@@ -144,10 +146,14 @@ export struct TransactionListPage {
         .layoutWeight(1)
         .width('100%')
         .sticky(StickyStyle.Header)
+        // 关闭默认弹性回弹（EdgeEffect.Spring）导致到底反弹（BUG-027/TC010）：
+        // 对齐安卓列表行为——可完整滑动到底无弹性过冲回弹
+        .edgeEffect(EdgeEffect.None)
+        .scrollBar(BarState.Auto)
       }
     }
     .width('100%')
-    .height('100%')
+    .layoutWeight(1)
     .backgroundColor($r('app.color.pageBackground'))
   }
 

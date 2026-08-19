@@ -2,7 +2,7 @@ import { AbilityConstant, ConfigurationConstant, UIAbility, Want } from '@kit.Ab
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { DbHelper } from '../database/DbHelper';
-import { SettingsService } from '../database/SettingsService';
+import { SettingsService, PREF_KEY } from '../database/SettingsService';
 import { DataManager } from '../database/DataManager';
 
 
@@ -35,7 +35,7 @@ export default class EntryAbility extends UIAbility {
 
     // 应用用户选择的主题（0 跟随系统 1 浅色 2 深色），对齐安卓 AppCompatDelegate.setDefaultNightMode
     try {
-      const theme = await SettingsService.getInstance().getNumber('theme', 0);
+      const theme = await SettingsService.getInstance().getNumber(PREF_KEY.THEME, 0);
       const colorMode: ConfigurationConstant.ColorMode = theme === 1
         ? ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT
         : (theme === 2 ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK
@@ -45,6 +45,20 @@ export default class EntryAbility extends UIAbility {
       AppStorage.setOrCreate('appTheme', theme);
     } catch (err) {
       hilog.error(DOMAIN, 'MyExpenses', 'Failed to apply theme. Cause: %{public}s', JSON.stringify(err));
+    }
+
+    // FIX-046：启动时读取界面设置并写入 AppStorage，供 Index.ets 等订阅组件响应
+    try {
+      const fontSize = await SettingsService.getInstance().getNumber(PREF_KEY.FONT_SIZE, 0);
+      AppStorage.setOrCreate('appFontScale', fontSize);
+      const language = await SettingsService.getInstance().getString(PREF_KEY.LANGUAGE, 'default');
+      AppStorage.setOrCreate('appLanguage', language);
+      const startScreen = await SettingsService.getInstance().getString(PREF_KEY.START_SCREEN, 'LastVisited');
+      AppStorage.setOrCreate('startScreen', startScreen);
+      const defaultAction = await SettingsService.getInstance().getString(PREF_KEY.DEFAULT_ACTION, 'LastVisited');
+      AppStorage.setOrCreate('defaultAction', defaultAction);
+    } catch (err) {
+      hilog.error(DOMAIN, 'MyExpenses', 'Failed to load UI settings. Cause: %{public}s', JSON.stringify(err));
     }
 
     windowStage.loadContent('pages/Index', (err) => {

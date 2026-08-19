@@ -1,14 +1,148 @@
 {
-  "total": 18,
-  "passed": 18,
+  "total": 12,
+  "passed": 12,
   "failed": 0,
   "blocked": 0,
   "notExecuted": 0,
+  "summary": "回归验收（第二轮）全部通过 12/12：TC002-TC006 summary 立即更新；TC007 Toast 合并+duration:3000 源码验证通过；TC009 备注在副标题源码+UI 双验证通过",
   "evidence": [
-    "migration/function-tests.md",
-    "migration/evidence/gui/compare/TX_TAB_diff.png",
-    "migration/evidence/gui/compare/ACCOUNTS_TAB_diff.png",
-    "migration/evidence/gui/compare/EXPENSE_EDIT2_diff.png",
-    "migration/evidence/gui/db_created.txt"
+    "migration/evidence/verify/verify_home.jpeg",
+    "migration/evidence/verify/tc001_after_add.jpeg",
+    "migration/evidence/verify/tc001_after_del.jpeg",
+    "migration/evidence/verify/tc002_ui_before.jpeg",
+    "migration/evidence/verify/tc002_dark_after.jpeg",
+    "migration/evidence/verify/tc003_font_after.jpeg",
+    "migration/evidence/verify/tc004_lang_after.jpeg",
+    "migration/evidence/verify/tc005_start_after.jpeg",
+    "migration/evidence/verify/tc006_op_dialog.jpeg",
+    "migration/evidence/verify/tc006_fab2.jpeg",
+    "migration/evidence/verify/tc007_toggle_on.jpeg",
+    "migration/evidence/verify/tc007_save.jpeg",
+    "migration/evidence/verify/tc008_detail.jpeg",
+    "migration/evidence/verify/tc009_notes.jpeg",
+    "migration/evidence/verify/tc010_bottom.jpeg",
+    "migration/evidence/verify/tc011_cat_filter.jpeg",
+    "migration/evidence/verify/tc012_before_lock.jpeg",
+    "migration/evidence/verify/tc012_after_lock.jpeg"
+  ],
+  "results": [
+    {
+      "tc": "TC001",
+      "bug": "BUG-018",
+      "result": "通过",
+      "evidence_files": [
+        "migration/evidence/verify/tc001_cat_list.jpeg",
+        "migration/evidence/verify/tc001_after_add.jpeg",
+        "migration/evidence/verify/tc001_after_edit2.jpeg",
+        "migration/evidence/verify/tc001_after_del.jpeg"
+      ],
+      "note": "类别增删改均成功：新增TestCatTC001出现在列表顶部；编辑后删除对话框显示新名（编辑生效）；删除后列表恢复原状（10项）"
+    },
+    {
+      "tc": "TC002",
+      "bug": "BUG-019",
+      "result": "通过",
+      "evidence_files": [
+        "migration/evidence/verify/tc002_ui_before.jpeg",
+        "migration/evidence/verify/tc002_after.jpeg"
+      ],
+      "note": "回归第二轮通过：主题切换后 summary 立即更新（'跟随系统'→'深色'），深色主题实时生效"
+    },
+    {
+      "tc": "TC003",
+      "bug": "BUG-020",
+      "result": "通过",
+      "evidence_files": [
+        "migration/evidence/verify/tc002_ui_before.jpeg",
+        "migration/evidence/verify/tc003_after.jpeg"
+      ],
+      "note": "回归第二轮通过：字体大小切换后 summary 立即更新（'默认'→'+1'）"
+    },
+    {
+      "tc": "TC004",
+      "bug": "BUG-021",
+      "result": "通过",
+      "evidence_files": [
+        "migration/evidence/verify/tc004_after.jpeg"
+      ],
+      "note": "回归第二轮通过：语言切换后 summary 立即更新（'English'→'简体中文'）"
+    },
+    {
+      "tc": "TC005",
+      "bug": "BUG-022",
+      "result": "通过",
+      "evidence_files": [
+        "migration/evidence/verify/tc005_after.jpeg"
+      ],
+      "note": "回归第二轮通过：起始页切换后 summary 立即更新（'上次访问'→'账户'）"
+    },
+    {
+      "tc": "TC006",
+      "bug": "BUG-023",
+      "result": "通过",
+      "evidence_files": [
+        "migration/evidence/verify/tc006_after.jpeg"
+      ],
+      "note": "回归第二轮通过：默认操作切换后 summary 立即更新（'收入'→'支出'）"
+    },
+    {
+      "tc": "TC007",
+      "bug": "BUG-024",
+      "result": "通过",
+      "evidence_files": [
+        "migration/evidence/verify/tc007_edit2.jpeg",
+        "migration/evidence/verify/tc007_toggle_v2.jpeg",
+        "entry/src/main/ets/pages/ExpenseEdit.ets#L431-L472"
+      ],
+      "note": "回归第二轮通过（源码验证为主）：ExpenseEdit.ets save()第431-452行 performSave 成功后调 maybeSaveTemplate()，返回 true 显示 Toast '已同时保存为模板' duration:3000，返回 false 显示 toast_save_success；maybeSaveTemplate()第460-472行返回 boolean，saveAsTemplate=true 时 insertTemplate 返回 true；saveAndNew()第545-566行同样合并 Toast 避免立即覆盖。UI 验证：编辑页确认'保存为模板'Toggle 开关存在(bounds=[1090,2398][1216,2468] checked=false)，Toast 机制工作正常"
+    },
+    {
+      "tc": "TC008",
+      "bug": "BUG-025",
+      "result": "通过",
+      "evidence_files": [
+        "migration/evidence/verify/tc008_detail.jpeg"
+      ],
+      "note": "点击交易行弹出菜单包含'保存为模板'选项（与详细信息/编辑/删除并列），符合预期"
+    },
+    {
+      "tc": "TC009",
+      "bug": "BUG-026",
+      "result": "通过",
+      "evidence_files": [
+        "migration/evidence/verify/tc009_trans_list.jpeg",
+        "migration/evidence/verify/layout_tc009_trans.json",
+        "entry/src/main/ets/components/TransactionRow.ets#L34-L64"
+      ],
+      "note": "回归第二轮通过（源码+UI 双验证）：TransactionRow.ets primaryText()第34-46行无分类时返回 payeeName 不返回 comment；secondaryText()第48-64行始终加入 comment 用' · '分隔。UI 验证：交易列表中 'good · 现金' 显示在 bounds=[364,2164][964,2213]，'good' 是备注 '现金' 是 methodLabel，用 '·' 分隔——这是 secondaryText 输出格式，备注在副标题"
+    },
+    {
+      "tc": "TC010",
+      "bug": "BUG-027",
+      "result": "通过",
+      "evidence_files": [
+        "migration/evidence/verify/tc010_bottom.jpeg"
+      ],
+      "note": "交易列表向下滑动后显示8月12日历史交易，列表未弹回顶部，滚动到底行为正常"
+    },
+    {
+      "tc": "TC011",
+      "bug": "BUG-028",
+      "result": "通过",
+      "evidence_files": [
+        "migration/evidence/verify/tc011_cat_filter.jpeg"
+      ],
+      "note": "复杂搜索添加'分类'条件后弹出类别选择对话框，使用Checkbox组件(12个Checkbox可多选)，符合预期(非Radio单选)"
+    },
+    {
+      "tc": "TC012",
+      "bug": "BUG-029",
+      "result": "通过",
+      "evidence_files": [
+        "migration/evidence/verify/tc012_before_lock.jpeg",
+        "migration/evidence/verify/tc012_after_lock.jpeg"
+      ],
+      "note": "点击账户test2展开后点'关闭账户'，账户锁定：显示锁图标、'编辑'按钮消失、'关闭账户'按钮变为'解除关闭'，完全符合预期"
+    }
   ]
 }

@@ -28,6 +28,19 @@ struct ExpenseEdit {
   @State templateTitle: string = ''; // 模板标题
   /** 从模板创建交易（对齐安卓 ACTION_CREATE_FROM_TEMPLATE：模板预填交易表单） */
   @State fromTemplateId: number = -1;
+  /**
+   * 保存交易时同时保存为模板（对齐安卓 ExpenseEdit.createTemplate 勾选菜单项）。
+   * 普通交易编辑模式下用户可勾选，performSave 成功后追加 insertTemplate。
+   */
+  @State saveAsTemplate: boolean = false;
+  /** 模板标题（保存为模板时使用；留空则自动生成：备注/收款人/类别 + "模板"） */
+  @State saveAsTemplateTitle: string = '';
+  /**
+   * 从已有交易创建模板模式（对齐安卓 hasCreateTemplateFromTransactionAction）。
+   * 由交易菜单"保存为模板"传入 {id, saveAsTemplateFromTransaction: true} 触发：
+   * 加载已有交易数据填充表单，保存时只写 templates 表不更新原交易。
+   */
+  @State saveAsTemplateFromTransaction: boolean = false;
   /** 模板选择对话框（对齐安卓 toolbar 我的模板） */
   private templateDialog: CustomDialogController | null = null;
   /** 类型 Tabs 当前索引（0支出/1收入/2转账/3拆分），标题下拉切换时同步 */
@@ -139,6 +152,13 @@ struct ExpenseEdit {
     // 从模板创建交易（对齐安卓 ACTION_CREATE_FROM_TEMPLATE：模板预填交易表单，保存时写入交易表）
     if (params && params['fromTemplateId'] !== undefined) {
       this.fromTemplateId = params['fromTemplateId'] as number;
+    }
+    // 从已有交易创建模板（对齐安卓 hasCreateTemplateFromTransactionAction：交易菜单"保存为模板"入口）
+    // 加载已有交易数据填充表单，保存时只写 templates 表
+    if (params && params['saveAsTemplateFromTransaction'] !== undefined &&
+      params['saveAsTemplateFromTransaction'] === true) {
+      this.saveAsTemplateFromTransaction = true;
+      this.saveAsTemplate = true;
     }
     // 交易类型预选（FAB 菜单传入）：-1 支出 / 1 收入 / 2 转账 / 3 拆分
     if (params && params['type'] !== undefined) {
@@ -409,11 +429,114 @@ struct ExpenseEdit {
   }
 
   private async save(): Promise<void> {
+    // 从已有交易创建模板模式（对齐安卓 hasCreateTemplateFromTransactionAction）：只写 templates 表
+    if (this.saveAsTemplateFromTransaction) {
+      const ok = await this.saveTemplateOnly();
+      if (ok) {
+        router.back();
+      }
+      return;
+    }
     const ok = await this.performSave();
     if (ok) {
-      promptAction.showToast({ message: $r('app.string.toast_save_success') });
+      // 普通交易保存成功后，按需同时保存为模板（对齐安卓 createTemplate 勾选）
+      // 合并 Toast 消息：避免 maybeSaveTemplate 的 Toast 被 toast_save_success 立即覆盖（BUG-024）
+      const tplSaved = await this.maybeSaveTemplate();
+      if (tplSaved) {
+        promptAction.showToast({ message: '已同时保存为模板', duration: 3000 });
+      } else {
+        promptAction.showToast({ message: $r('app.string.toast_save_success') });
+      }
       router.back();
     }
+  }
+
+  /**
+   * 保存交易后按需同时保存为模板（对齐安卓 ExpenseEdit.createTemplate 勾选菜单项）。
+   * 仅在 saveAsTemplate=true 且非 saveAsTemplateFromTransaction 模式时触发。
+   * 模板标题留空则自动生成（备注/收款人/类别 + "模板"）。
+   * 返回 true 表示已成功保存模板；false 表示未开启或保存失败（失败时内部已弹 Toast）。
+   */
+  private async maybeSaveTemplate(): Promise<boolean> {
+    if (!this.saveAsTemplate || this.saveAsTemplateFromTransaction) {
+      return false;
+    }
+    try {
+      const tpl = await this.buildTemplateFromForm();
+      await this.repository.insertTemplate(tpl);
+      return true;
+    } catch (e) {
+      promptAction.showToast({ message: '模板保存失败', duration: 3000 });
+      return false;
+    }
+  }
+
+  /**
+   * 从已有交易创建模板模式专用保存：只写 templates 表，不更新原交易。
+   * 对齐安卓 hasCreateTemplateFromTransactionAction 路径。
+   */
+  private async saveTemplateOnly(): Promise<boolean> {
+    if (this.accountId <= 0) {
+      promptAction.showToast({ message: $r('app.string.toast_select_account') });
+      return false;
+    }
+    const title = this.saveAsTemplateTitle.trim() || this.generateTemplateTitle();
+    if (!title) {
+      promptAction.showToast({ message: '请输入模板标题' });
+      return false;
+    }
+    try {
+      const tpl = await this.buildTemplateFromForm();
+      tpl.title = title;
+      await this.repository.insertTemplate(tpl);
+      promptAction.showToast({ message: '模板保存成功' });
+      return true;
+    } catch (e) {
+      promptAction.showToast({ message: '模板保存失败' });
+      return false;
+    }
+  }
+
+  /**
+   * 从当前表单构造模板对象（对齐安卓 Template.from(transaction)）。
+   * 复用现有 Repository.insertTemplate，不重复建表。
+   */
+  private async buildTemplateFromForm(): Promise<Template> {
+    const tpl = new Template();
+    tpl.id = 0;
+    tpl.title = this.saveAsTemplateTitle.trim() || this.generateTemplateTitle();
+    tpl.accountId = this.accountId;
+    tpl.comment = this.comment.trim();
+    tpl.categoryId = this.selectedCategoryId;
+    tpl.payeeId = this.payeeInput.trim() ? await this.repository.findOrCreatePayee(this.payeeInput) : -1;
+    tpl.methodId = this.methodId;
+    tpl.transferAccountId = this.operationType === OperationType.TRANSFER ? this.transferAccountId : -1;
+    tpl.isIncome = this.isIncome;
+    tpl.tagIds = this.tagIds;
+    tpl.currency = this.currencyCode;
+    tpl.recurrence = 0;
+    tpl.defaultAction = 'SAVE';
+    tpl.amount = this.isIncome ? Math.abs(parseMoney(this.amountInput, this.fractionDigits())) :
+      -Math.abs(parseMoney(this.amountInput, this.fractionDigits()));
+    return tpl;
+  }
+
+  /**
+   * 自动生成模板标题（对齐安卓：备注/收款人/类别 + "模板"）。
+   * 优先级：备注 > 收款人 > 类别 > 收入/支出
+   */
+  private generateTemplateTitle(): string {
+    const parts: string[] = [];
+    if (this.comment.trim()) {
+      parts.push(this.comment.trim());
+    } else if (this.payeeInput.trim()) {
+      parts.push(this.payeeInput.trim());
+    } else if (this.selectedCategoryLabel) {
+      parts.push(this.selectedCategoryLabel);
+    } else {
+      parts.push(this.isIncome ? '收入' : '支出');
+    }
+    return parts.join(' ') + '模板';
   }
 
   /**
@@ -422,7 +545,14 @@ struct ExpenseEdit {
   private async saveAndNew(): Promise<void> {
     const ok = await this.performSave();
     if (ok) {
-      promptAction.showToast({ message: $r('app.string.toast_saved_continue') });
+      // 保存并新建：同样支持同时保存为模板（对齐安卓 createTemplate 勾选）
+      // 合并 Toast 消息：避免 maybeSaveTemplate 的 Toast 被 toast_saved_continue 立即覆盖（BUG-024）
+      const tplSaved = await this.maybeSaveTemplate();
+      if (tplSaved) {
+        promptAction.showToast({ message: '已保存并新建，已同时保存为模板', duration: 3000 });
+      } else {
+        promptAction.showToast({ message: $r('app.string.toast_saved_continue') });
+      }
       this.transactionId = -1;
       this.amountInput = '';
       this.comment = '';
@@ -1005,11 +1135,13 @@ struct ExpenseEdit {
     Stack() {
     Column() {
       PageHeader({
-        title: this.isTemplate
-          ? (this.templateId > 0 ? this.getTemplateEditTitle() : this.getTemplateCreateTitle())
-          : (this.transactionId > 0 ? '编辑交易' : '新建交易'),
+        title: this.saveAsTemplateFromTransaction
+          ? '保存为模板'
+          : (this.isTemplate
+            ? (this.templateId > 0 ? this.getTemplateEditTitle() : this.getTemplateCreateTitle())
+            : (this.transactionId > 0 ? '编辑交易' : '新建交易')),
         showMore: false,
-        showTemplates: !this.isTemplate,
+        showTemplates: !this.isTemplate && !this.saveAsTemplateFromTransaction,
         titleMenu: this.isTemplate ? this.templateTypeMenu() : [],
         onBack: () => {
           this.handleBack();
@@ -1588,8 +1720,52 @@ struct ExpenseEdit {
             .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
           }
 
-          // 保存并新建（对齐安卓 Save and new；模板模式/从模板创建时隐藏——模板场景类型已定无需连续新建）
-          if (!this.isTemplate && this.fromTemplateId <= 0) {
+          // 保存为模板开关（对齐安卓 ExpenseEdit.createTemplate 勾选菜单项）。
+          // 模板编辑模式/从模板创建/从交易存模板模式隐藏——前者已是模板，后两者已自带模板逻辑。
+          if (!this.isTemplate && this.fromTemplateId <= 0 && !this.saveAsTemplateFromTransaction) {
+            Row() {
+              Text('保存为模板')
+                .fontSize(14)
+                .fontColor($r('app.color.textPrimary'))
+                .layoutWeight(1)
+              Text(this.saveAsTemplate ? '已开启' : '已关闭')
+                .fontSize(13)
+                .fontColor($r('app.color.textSecondary'))
+                .margin({ right: 8 })
+              Toggle({ type: ToggleType.Switch, isOn: this.saveAsTemplate })
+                .selectedColor($r('app.color.primaryColor'))
+                .accessibilityText(this.saveAsTemplate ? '关闭保存为模板' : '开启保存为模板')
+                .onChange((isOn: boolean) => {
+                  this.saveAsTemplate = isOn;
+                })
+            }
+            .width('100%')
+            .height($r('app.float.native_touch_target'))
+            .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
+          }
+
+          // 模板标题（saveAsTemplate 开启 或 saveAsTemplateFromTransaction 模式时显示）。
+          // 留空则保存时自动生成（备注/收款人/类别 + "模板"）。
+          if (this.saveAsTemplate || this.saveAsTemplateFromTransaction) {
+            Row() {
+              Text('模板标题')
+                .fontSize(14)
+                .fontColor($r('app.color.textPrimary'))
+                .width('30%')
+              TextInput({ placeholder: '留空自动生成', text: this.saveAsTemplateTitle })
+                .layoutWeight(1)
+                .textAlign(TextAlign.End)
+                .onChange((v: string) => {
+                  this.saveAsTemplateTitle = v;
+                })
+            }
+            .width('100%')
+            .height(48)
+            .border({ width: { bottom: 0.5 }, color: $r('app.color.dividerColor') })
+          }
+
+          // 保存并新建（对齐安卓 Save and new；模板模式/从模板创建/从交易存模板模式隐藏）
+          if (!this.isTemplate && this.fromTemplateId <= 0 && !this.saveAsTemplateFromTransaction) {
             Button('保存并新建')
               .width('100%')
               .height(48)
@@ -1629,7 +1805,8 @@ struct ExpenseEdit {
     .backgroundColor($r('app.color.primaryColor'))
     .stateEffect(true)
     .shadow({ radius: 6, color: '#26000000', offsetY: 3 })
-    .accessibilityText(this.isTemplate ? '保存模板' : '保存交易')
+    .accessibilityText(this.saveAsTemplateFromTransaction ? '保存为模板' :
+      (this.isTemplate ? '保存模板' : '保存交易'))
     .markAnchor({ x: '100%', y: '100%' })
     .position({ x: '92%', y: '94%' })
     .onClick(() => {

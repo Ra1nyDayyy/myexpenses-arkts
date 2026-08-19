@@ -90,6 +90,8 @@ struct Index {
   @State lastAction: number = -1; // 记住的上次操作：-1 支出 / 1 收入 / 2 转账
   /** 交易页就地工具面板（对齐 Android 顶部展开操作） */
   @State transactionToolsExpanded: boolean = false;
+  // FIX-046/TC005：起始页设置只首次 aboutToApply 应用一次，避免 onPageShow 重复跳转
+  @State startScreenApplied: boolean = false;
 
 
   private repository: Repository = Repository.getInstance();
@@ -98,7 +100,37 @@ struct Index {
   private pathStack: NavPathStack = new NavPathStack();
 
   aboutToAppear(): void {
+    // FIX-046/TC005：首次进入应用起始页设置（仅执行一次，避免 onPageShow 重复跳转）
+    if (!this.startScreenApplied) {
+      this.startScreenApplied = true;
+      this.applyStartScreen();
+    }
     this.loadData();
+  }
+
+  /**
+   * FIX-046/TC005：根据 AppStorage['startScreen'] 切换初始 Tab 或跳转资产负债表页
+   * 值为 'Accounts' → 0；'Transactions' → 1；'Templates' → 3；'More' → 4；
+   * 'BalanceSheet' → router.pushUrl 跳转；'LastVisited'/undefined → 保持默认
+   * 注：底部 Tab 顺序为 账户(0)/交易(1)/AI(2)/模板(3)/更多(4)
+   */
+  private applyStartScreen(): void {
+    const startScreen = AppStorage.get<string>('startScreen');
+    if (startScreen === undefined || startScreen === null || startScreen === 'LastVisited') {
+      return;
+    }
+    if (startScreen === 'Accounts') {
+      this.selectedTab = 0;
+    } else if (startScreen === 'Transactions') {
+      this.selectedTab = 1;
+    } else if (startScreen === 'Templates') {
+      this.selectedTab = 3;
+    } else if (startScreen === 'More') {
+      this.selectedTab = 4;
+    } else if (startScreen === 'BalanceSheet') {
+      router.pushUrl({ url: 'pages/BalanceSheet' }).catch(() => {
+      });
+    }
   }
 
   onPageShow(): void {
@@ -449,6 +481,31 @@ struct Index {
     this.lastAction = type;
     await this.settings.setNumber(PREF_KEY.LAST_ACTION, type);
     this.navigateToExpenseEdit(-1, this.selectedAccountId, type);
+  }
+
+  /**
+   * FIX-046/TC006：解析 FAB 默认操作类型
+   * 读取 AppStorage['defaultAction']：
+   * - 'LastVisited' 或 undefined → this.lastAction（现有行为，记住上次操作）
+   * - 'Expense' → -1；'Income' → 1；'Transfer' → 2；'Split' → 3；'Scan' → 4
+   */
+  private resolveFabDefaultAction(): number {
+    const defaultAction = AppStorage.get<string>('defaultAction');
+    if (defaultAction === undefined || defaultAction === null || defaultAction === 'LastVisited') {
+      return this.lastAction;
+    }
+    if (defaultAction === 'Expense') {
+      return -1;
+    } else if (defaultAction === 'Income') {
+      return 1;
+    } else if (defaultAction === 'Transfer') {
+      return 2;
+    } else if (defaultAction === 'Split') {
+      return 3;
+    } else if (defaultAction === 'Scan') {
+      return 4;
+    }
+    return this.lastAction;
   }
 
   /**
@@ -1194,7 +1251,7 @@ struct Index {
                   if (this.fabExpanded) {
                     this.fabExpanded = false;
                   } else {
-                    this.createFromFab(this.lastAction);
+                    this.createFromFab(this.resolveFabDefaultAction());
                   }
                 })
                 .gesture(
@@ -2635,7 +2692,22 @@ struct Index {
       this.navigateToExpenseEdit(id, this.selectedAccountId);
     } else if (action === 'delete') {
       this.confirmDeleteTransaction(tx);
+    } else if (action === 'save_as_template') {
+      // FIX-050/TC008：点击交易行"保存为模板"→ 跳转 ExpenseEdit 模板保存模式
+      this.navigateToExpenseEditForTemplate(id, this.selectedAccountId);
     }
+  }
+
+  /**
+   * FIX-050/TC008：跳转 ExpenseEdit 进入"保存为模板"模式
+   * params.saveAsTemplateFromTransaction=true 触发 ExpenseEdit 加载交易数据并预填模板字段
+   */
+  private navigateToExpenseEditForTemplate(id: number, accountId: number): void {
+    router.pushUrl({
+      url: 'pages/ExpenseEdit',
+      params: { id: id, accountId: accountId, saveAsTemplateFromTransaction: true }
+    }).catch(() => {
+    });
   }
 
   private detailDialog: CustomDialogController | null = null;
